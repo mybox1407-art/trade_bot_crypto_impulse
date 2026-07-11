@@ -69,18 +69,19 @@
     .brand h1{font:700 var(--text-xl)/1.05 var(--font-display);letter-spacing:-.03em}
     .brand p{color:var(--color-text-muted);font-size:var(--text-sm)}
     .toolbar{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
-    .ghost-btn,.chip,.primary-btn,.secondary-btn,.danger-btn{min-height:44px;padding:0 var(--space-4);border-radius:999px;font-size:var(--text-sm);font-weight:600;transition:.18s ease}
-    .ghost-btn{border:1px solid var(--color-border);background:var(--color-surface)}
+    .ghost-btn,.primary-btn,.secondary-btn,.danger-btn,.equal-btn{min-height:44px;padding:0 var(--space-4);border-radius:999px;font-size:var(--text-sm);font-weight:600;transition:.18s ease}
+    .ghost-btn{border:1px solid var(--color-border);background:var(--color-surface);min-width:146px}
     .ghost-btn:hover{background:var(--color-surface-2)}
     .primary-btn{background:var(--color-primary);color:#fff}
     .primary-btn:hover{background:var(--color-primary-hover)}
     .secondary-btn{background:var(--color-primary-highlight);color:var(--color-primary)}
     .danger-btn{background:color-mix(in srgb,var(--color-error) 14%, var(--color-surface));color:var(--color-error)}
-    .overview{display:grid;grid-template-columns:1.15fr .85fr;gap:var(--space-6);align-items:start}
+    .equal-btn{min-width:128px;justify-content:center;display:inline-flex;align-items:center}
+    .overview,.stack{display:grid;gap:var(--space-6);align-items:start}
+    .overview{grid-template-columns:1fr 1fr}
     .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm)}
     .card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-4);padding:var(--space-5) var(--space-5) var(--space-4)}
     .card-title{font:700 var(--text-lg)/1.15 var(--font-display);letter-spacing:-.025em}
-    .card-subtitle{color:var(--color-text-muted);font-size:var(--text-sm);margin-top:var(--space-1)}
     .table-wrap{overflow:auto;padding:0 var(--space-4) var(--space-4)}
     th,td{text-align:left;padding:14px 12px;border-top:1px solid var(--color-divider);white-space:nowrap;font-size:var(--text-sm)}
     thead th{color:var(--color-text-muted);font-weight:600;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.06em;background:color-mix(in srgb,var(--color-surface) 72%, var(--color-surface-2));position:sticky;top:0}
@@ -92,29 +93,19 @@
     .status.running{background:color-mix(in srgb,var(--color-success) 14%, var(--color-surface));color:var(--color-success)}
     .status.stopped{background:color-mix(in srgb,var(--color-error) 14%, var(--color-surface));color:var(--color-error)}
     .status.paused{background:color-mix(in srgb,var(--color-warning) 18%, var(--color-surface));color:var(--color-warning)}
-    .panel{padding:var(--space-5)}
-    .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:var(--space-4);align-items:start;padding-top:var(--space-3)}
-    .hero-main h2{font:700 clamp(1.4rem,1.1rem + 1vw,2rem)/1.05 var(--font-display);letter-spacing:-.03em;margin-bottom:var(--space-2)}
-    .hero-main p{color:var(--color-text-muted);max-width:60ch}
-    .meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);margin-top:var(--space-5)}
-    .meta{background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--space-4)}
-    .meta .label{font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--color-text-muted);margin-bottom:6px}
-    .meta .value{font-size:var(--text-lg);font-weight:700;letter-spacing:-.02em}
-    .actions{display:flex;gap:var(--space-3);flex-wrap:wrap;justify-content:flex-end}
-    .stack{display:grid;gap:var(--space-6);margin-top:var(--space-6)}
+    .card-actions{display:flex;gap:var(--space-3);flex-wrap:wrap;padding:0 var(--space-5) var(--space-4)}
     .result-positive{color:var(--color-success);font-weight:700}
     .result-negative{color:var(--color-error);font-weight:700}
-    .small{font-size:var(--text-xs);color:var(--color-text-muted)}
-    .mobile-note{display:none}
+    .mobile-note{display:none;color:var(--color-text-muted);font-size:var(--text-sm);margin-top:var(--space-3)}
     @media (max-width: 1100px){
-      .overview,.hero{grid-template-columns:1fr}
-      .actions{justify-content:flex-start}
+      .overview{grid-template-columns:1fr}
     }
     @media (max-width: 720px){
       .app{padding:var(--space-4)}
       .topbar,.card-header{align-items:flex-start;flex-direction:column}
-      .meta-grid{grid-template-columns:1fr}
-      .mobile-note{display:block;color:var(--color-text-muted);font-size:var(--text-sm);margin-top:var(--space-3)}
+      .toolbar,.card-actions{width:100%}
+      .ghost-btn,.primary-btn,.secondary-btn,.danger-btn,.equal-btn{width:100%}
+      .mobile-note{display:block}
     }
   </style>
 </head>
@@ -129,13 +120,12 @@
         </div>
         <div>
           <h1>Bot Control Board</h1>
-          <p>Панель мониторинга, запусков и торговой истории для demo-ботов.</p>
+          <p>Панель управления и мониторинга торговых ботов</p>
         </div>
       </div>
       <div class="toolbar">
-        <button class="ghost-btn" data-theme-toggle aria-label="Сменить тему">Тема</button>
-        <button class="ghost-btn">Фильтр статусов</button>
-        <button class="primary-btn">Добавить бота</button>
+        <button class="primary-btn equal-btn">Добавить бота</button>
+        <button class="ghost-btn equal-btn" data-theme-toggle aria-label="Сменить тему">Тема</button>
       </div>
     </header>
 
@@ -144,16 +134,15 @@
         <div class="card-header">
           <div>
             <h2 id="bots-table-title" class="card-title">Торговые боты</h2>
-            <p class="card-subtitle">Выбираешь строку — справа открывается рабочая панель выбранного бота.</p>
           </div>
-          <span class="small">Всего 4 бота</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th>Идентификатор</th>
                 <th>Название</th>
-                <th>Дата добавления</th>
+                <th>Дата запуска</th>
                 <th>Пара</th>
                 <th>Биржа</th>
                 <th>Статус</th>
@@ -161,28 +150,32 @@
             </thead>
             <tbody>
               <tr class="active">
-                <td><strong>Impulse BTC 1m</strong><div class="small">bot_001</div></td>
+                <td>bot_001</td>
+                <td><strong>Impulse BTC 1m</strong></td>
                 <td>11.07.2026</td>
                 <td>BTC/USDT</td>
                 <td>Binance Demo</td>
                 <td><span class="status running">Running</span></td>
               </tr>
               <tr>
-                <td><strong>ETH Breakout 5m</strong><div class="small">bot_002</div></td>
+                <td>bot_002</td>
+                <td><strong>ETH Breakout 5m</strong></td>
                 <td>10.07.2026</td>
                 <td>ETH/USDT</td>
                 <td>Binance Demo</td>
                 <td><span class="status paused">Paused</span></td>
               </tr>
               <tr>
-                <td><strong>SOL Range Demo</strong><div class="small">bot_003</div></td>
+                <td>bot_003</td>
+                <td><strong>SOL Range Demo</strong></td>
                 <td>08.07.2026</td>
                 <td>SOL/USDT</td>
                 <td>Bybit Demo</td>
                 <td><span class="status stopped">Stopped</span></td>
               </tr>
               <tr>
-                <td><strong>Momentum Watcher</strong><div class="small">bot_004</div></td>
+                <td>bot_004</td>
+                <td><strong>Momentum Watcher</strong></td>
                 <td>07.07.2026</td>
                 <td>BNB/USDT</td>
                 <td>OKX Demo</td>
@@ -194,79 +187,49 @@
         </div>
       </section>
 
-      <section class="card panel" aria-labelledby="selected-bot-title">
-        <div class="hero">
-          <div class="hero-main">
-            <h2 id="selected-bot-title">Impulse BTC 1m</h2>
-            <p>Бот для demo-торговли по импульсному движению. Смотрит 1-минутные свечи, проверяет вход, рассчитывает размер позиции и пишет все действия в журнал.</p>
-            <div class="meta-grid">
-              <div class="meta"><div class="label">Пара</div><div class="value">BTC/USDT</div></div>
-              <div class="meta"><div class="label">Биржа</div><div class="value">Binance Demo</div></div>
-              <div class="meta"><div class="label">Последний запуск</div><div class="value">18:44</div></div>
-              <div class="meta"><div class="label">PnL сегодня</div><div class="value result-positive">+84.20 USDT</div></div>
-            </div>
-          </div>
-          <div>
-            <div class="actions">
-              <button class="primary-btn">Запустить</button>
-              <button class="danger-btn">Остановить</button>
-              <button class="secondary-btn">Пробный запрос</button>
-            </div>
-            <div class="meta-grid" style="margin-top: 20px;">
-              <div class="meta"><div class="label">Статус</div><div class="value"><span class="status running">Running</span></div></div>
-              <div class="meta"><div class="label">n8n workflow</div><div class="value" style="font-size:1rem">trade-bot-btc-demo</div></div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <section class="stack">
       <section class="card" aria-labelledby="work-log-title">
         <div class="card-header">
           <div>
             <h2 id="work-log-title" class="card-title">История работы бота</h2>
-            <p class="card-subtitle">Лог системных действий: старт, стоп, тестовый запрос, ошибки API, ручные вмешательства.</p>
           </div>
-          <span class="small">Последние 8 событий</span>
+        </div>
+        <div class="card-actions">
+          <button class="primary-btn equal-btn">Запуск</button>
+          <button class="danger-btn equal-btn">Стоп</button>
+          <button class="secondary-btn equal-btn">Проверка</button>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Дата / время</th>
                 <th>Событие</th>
-                <th>Источник</th>
+                <th>Дата / время</th>
                 <th>Статус</th>
                 <th>Комментарий</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>11.07.2026 18:44:10</td>
                 <td>Пробный запрос</td>
-                <td>Панель</td>
+                <td>11.07.2026 18:44:10</td>
                 <td><span class="status running">Success</span></td>
                 <td>Binance API доступен, latency 182 ms</td>
               </tr>
               <tr>
-                <td>11.07.2026 18:41:03</td>
                 <td>Запуск бота</td>
-                <td>Панель</td>
+                <td>11.07.2026 18:41:03</td>
                 <td><span class="status running">Success</span></td>
                 <td>Workflow активирован вручную</td>
               </tr>
               <tr>
-                <td>11.07.2026 16:12:44</td>
                 <td>Остановка бота</td>
-                <td>Панель</td>
+                <td>11.07.2026 16:12:44</td>
                 <td><span class="status paused">Stopped</span></td>
                 <td>Остановлен перед обновлением логики входа</td>
               </tr>
               <tr>
-                <td>11.07.2026 15:07:51</td>
                 <td>Ошибка биржи</td>
-                <td>Worker</td>
+                <td>11.07.2026 15:07:51</td>
                 <td><span class="status stopped">Error</span></td>
                 <td>Rejected by exchange: insufficient balance</td>
               </tr>
@@ -274,14 +237,14 @@
           </table>
         </div>
       </section>
+    </main>
 
+    <section class="stack" style="margin-top: var(--space-6);">
       <section class="card" aria-labelledby="trade-log-title">
         <div class="card-header">
           <div>
             <h2 id="trade-log-title" class="card-title">История торговли</h2>
-            <p class="card-subtitle">Ключевая таблица. Тут должны храниться все поля по сделке: вход, выход, объём, комиссия, причина входа и итоговый результат.</p>
           </div>
-          <span class="small">Полный аудит сделок</span>
         </div>
         <div class="table-wrap">
           <table>
