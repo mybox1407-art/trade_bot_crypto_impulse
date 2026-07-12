@@ -10,7 +10,7 @@ const ENTRY_TIMEFRAME = '15m';
 export function startScheduler() {
   console.log('[SCHEDULER] Starting scheduler...');
 
-  cron.schedule('*/15 * * * *', async () => {
+  cron.schedule('* * * * *', async () => {
     console.log('[ENTRY CHECK] Triggered at', new Date().toISOString());
     try {
       const candles = await getCandles(SYMBOL, ENTRY_TIMEFRAME, 250);
