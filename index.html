@@ -74,7 +74,8 @@
     .danger-btn{background:color-mix(in srgb,var(--color-error) 14%, var(--color-surface));color:var(--color-error)}
     .equal-btn{min-width:128px;justify-content:center;display:inline-flex;align-items:center}
     .overview,.stack{display:grid;gap:var(--space-6);align-items:start}
-    .overview{grid-template-columns:1fr 1fr}
+    .overview{grid-template-columns:1fr}
+    .stack{margin-top:var(--space-6)}
     .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm)}
     .card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-4);padding:var(--space-5) var(--space-5) var(--space-4)}
     .card-title{font:700 var(--text-lg)/1.15 var(--font-display);letter-spacing:-.025em}
@@ -170,7 +171,7 @@
       </section>
     </main>
 
-    <section class="stack" style="margin-top: var(--space-6);">
+    <section class="stack">
       <section class="card" aria-labelledby="trade-log-title">
         <div class="card-header">
           <h2 id="trade-log-title" class="card-title">История торговли</h2>
@@ -297,7 +298,7 @@
 
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_bots', {
-            method: 'POST',
+            method: 'GET',
             headers: { 'Accept': 'application/json' }
           });
 
