@@ -1,22 +1,39 @@
 import { Router } from 'express';
 import { getCurrentPrice } from '../services/exchange';
-import { closePosition, getPosition, openPosition } from '../services/positionState';
+import {
+  closePosition,
+  getBalance,
+  getLastClosedTrade,
+  getPosition,
+  openPosition
+} from '../services/positionState';
+import { analyzeMarket } from '../services/strategy';
+import { getCandles } from '../services/exchange';
 
 const router = Router();
 
 router.get('/status', (_req, res) => {
   res.json({
     ok: true,
-    position: getPosition()
+    balance: getBalance(),
+    position: getPosition(),
+    lastClosedTrade: getLastClosedTrade()
   });
 });
 
 router.post('/open', async (req, res) => {
   try {
-    const { symbol } = req.body as { symbol?: string };
+    const { symbol, takeProfitPrice, stopLossPrice } = req.body as {
+      symbol?: string;
+      takeProfitPrice?: number;
+      stopLossPrice?: number;
+    };
 
-    if (!symbol) {
-      return res.status(400).json({ ok: false, message: 'symbol is required' });
+    if (!symbol || !takeProfitPrice || !stopLossPrice) {
+      return res.status(400).json({
+        ok: false,
+        message: 'symbol, takeProfitPrice, stopLossPrice are required'
+      });
     }
 
     if (getPosition()) {
@@ -24,15 +41,11 @@ router.post('/open', async (req, res) => {
     }
 
     const entryPrice = await getCurrentPrice(symbol);
-    const takeProfitPrice = entryPrice * 1.045;
-    const stopLossPrice = entryPrice * 0.985;
-
     const result = openPosition({
       symbol,
       entryPrice,
       takeProfitPrice,
-      stopLossPrice,
-      openedAt: new Date().toISOString()
+      stopLossPrice
     });
 
     res.json(result);
@@ -44,9 +57,53 @@ router.post('/open', async (req, res) => {
   }
 });
 
-router.post('/close', (_req, res) => {
+router.post('/close', async (req, res) => {
   try {
-    res.json(closePosition());
+    const { reason } = req.body as { reason?: 'take_profit' | 'stop_loss' | 'manual' };
+
+    if (!getPosition()) {
+      return res.status(409).json({ ok: false, message: 'No open position' });
+    }
+
+    const pos = getPosition()!;
+    const exitPrice = await getCurrentPrice(pos.symbol);
+    const result = closePosition(exitPrice, reason || 'manual');
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+router.get('/check-close', async (_req, res) => {
+  try {
+    const pos = getPosition();
+
+    if (!pos) {
+      return res.json({ ok: true, action: 'none', reason: 'no_position' });
+    }
+
+    const currentPrice = await getCurrentPrice(pos.symbol);
+
+    if (currentPrice >= pos.takeProfitPrice) {
+      const result = closePosition(currentPrice, 'take_profit');
+      return res.json({ ok: true, action: 'closed', reason: 'take_profit', currentPrice, result });
+    }
+
+    if (currentPrice <= pos.stopLossPrice) {
+      const result = closePosition(currentPrice, 'stop_loss');
+      return res.json({ ok: true, action: 'closed', reason: 'stop_loss', currentPrice, result });
+    }
+
+    return res.json({
+      ok: true,
+      action: 'hold',
+      currentPrice,
+      position: pos
+    });
   } catch (error) {
     res.status(500).json({
       ok: false,
