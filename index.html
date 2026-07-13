@@ -166,6 +166,13 @@
             <option value="true">Покупка = Да</option>
             <option value="false">Покупка = Нет</option>
           </select>
+          <select id="periodFilter">
+            <option value="all">Период = Все</option>
+            <option value="day">За день</option>
+            <option value="week">За неделю</option>
+            <option value="2weeks">За 2 недели</option>
+            <option value="month">За месяц</option>
+          </select>
           <div class="pager">
             <button class="page-btn" id="prevPageBtn">Назад</button>
             <div class="pager-info" id="pagerInfo">Стр. 1</div>
@@ -189,7 +196,7 @@
               </tr>
             </thead>
             <tbody id="workLogBody">
-              <tr><td colspan="11">Загрузка...</td></tr>
+              <tr><td colspan="10">Загрузка...</td></tr>
             </tbody>
           </table>
         </div>
@@ -233,6 +240,7 @@
       const themeBtn = document.querySelector('[data-theme-toggle]');
       const refreshSignalsBtn = document.getElementById('refreshSignalsBtn');
       const buyFilter = document.getElementById('buyFilter');
+      const periodFilter = document.getElementById('periodFilter');
       const prevPageBtn = document.getElementById('prevPageBtn');
       const nextPageBtn = document.getElementById('nextPageBtn');
       const pagerInfo = document.getElementById('pagerInfo');
@@ -247,6 +255,7 @@
       let currentPage = 1;
       const pageSize = 5;
       let buyFilterValue = 'all';
+      let periodFilterValue = 'all';
 
       root.setAttribute('data-theme', theme);
 
@@ -259,20 +268,6 @@
         if (json && typeof json === 'object' && Array.isArray(json.data)) return json.data;
         if (json && typeof json === 'object') return [json];
         return [];
-      }
-
-      function statusClass(status) {
-        const s = String(status || '').toLowerCase();
-        if (s === 'run' || s === 'running' || s === 'active') return 'running';
-        if (s === 'pause' || s === 'paused') return 'paused';
-        return 'stopped';
-      }
-
-      function statusLabel(status) {
-        const s = String(status || '').toLowerCase();
-        if (s === 'run' || s === 'running' || s === 'active') return 'Running';
-        if (s === 'pause' || s === 'paused') return 'Paused';
-        return 'Stopped';
       }
 
       function formatDate(value) {
@@ -293,10 +288,39 @@
         return value ? 'Да' : 'Нет';
       }
 
+      function statusClass(status) {
+        const s = String(status || '').toLowerCase();
+        if (s === 'run' || s === 'running' || s === 'active') return 'running';
+        if (s === 'pause' || s === 'paused') return 'paused';
+        return 'stopped';
+      }
+
+      function statusLabel(status) {
+        const s = String(status || '').toLowerCase();
+        if (s === 'run' || s === 'running' || s === 'active') return 'Running';
+        if (s === 'pause' || s === 'paused') return 'Paused';
+        return 'Stopped';
+      }
+
+      function daysFromPeriod(period) {
+        if (period === 'day') return 1;
+        if (period === 'week') return 7;
+        if (period === '2weeks') return 14;
+        if (period === 'month') return 30;
+        return null;
+      }
+
       function getFilteredSignals() {
+        const days = daysFromPeriod(periodFilterValue);
+        const now = new Date();
+
         return signalsState.filter((s) => {
-          if (buyFilterValue === 'all') return true;
-          return String(Boolean(s.buy)) === buyFilterValue;
+          if (buyFilterValue !== 'all' && String(Boolean(s.buy)) !== buyFilterValue) return false;
+          if (!days) return true;
+          const d = new Date(s.created_at);
+          if (Number.isNaN(d.getTime())) return false;
+          const diff = now - d;
+          return diff >= 0 && diff <= days * 24 * 60 * 60 * 1000;
         });
       }
 
@@ -335,12 +359,11 @@
         const pageItems = filtered.slice(start, start + pageSize);
 
         pagerInfo.textContent = `Стр. ${currentPage} из ${pageCount} • ${filtered.length} записей`;
-
         prevPageBtn.disabled = currentPage <= 1;
         nextPageBtn.disabled = currentPage >= pageCount;
 
         if (!pageItems.length) {
-          workLogBody.innerHTML = `<tr><td colspan="11">Сигналы не найдены</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="10">Сигналы не найдены</td></tr>`;
           return;
         }
 
@@ -357,7 +380,7 @@
               <td>${boolLabel(signal.macd_cross_up)}</td>
               <td>${boolLabel(signal.rsi_ok)}</td>
               <td>${formatNumber(signal.last_rsi, 4)}</td>
-              <td>${formatNumber(signal.last_atr, 8)}</td>
+              <td>${formatNumber(signal.last_atr, 3)}</td>
             </tr>
           `;
         }).join('');
@@ -411,11 +434,11 @@
 
       async function loadSignals(botId = currentBotId) {
         if (!botId) {
-          workLogBody.innerHTML = `<tr><td colspan="11">Бот не выбран</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="10">Бот не выбран</td></tr>`;
           return;
         }
 
-        workLogBody.innerHTML = `<tr><td colspan="11">Загрузка...</td></tr>`;
+        workLogBody.innerHTML = `<tr><td colspan="10">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
             method: 'POST',
@@ -434,7 +457,7 @@
           renderSignalsTable();
         } catch (error) {
           console.error('loadSignals error:', error);
-          workLogBody.innerHTML = `<tr><td colspan="11">Ошибка загрузки сигналов</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="10">Ошибка загрузки сигналов</td></tr>`;
         }
       }
 
@@ -450,6 +473,12 @@
 
       buyFilter.addEventListener('change', () => {
         buyFilterValue = buyFilter.value;
+        currentPage = 1;
+        renderSignalsTable();
+      });
+
+      periodFilter.addEventListener('change', () => {
+        periodFilterValue = periodFilter.value;
         currentPage = 1;
         renderSignalsTable();
       });
