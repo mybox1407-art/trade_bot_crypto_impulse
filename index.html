@@ -159,6 +159,7 @@
             <thead>
               <tr>
                 <th>Created</th>
+                <th>Ready</th>
                 <th>Symbol</th>
                 <th>TFrame</th>
                 <th>Price</th>
@@ -219,8 +220,8 @@
 
       let theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       let botsState = [];
-      let currentBotId = null;
       let signalsState = [];
+      let currentBotId = null;
 
       root.setAttribute('data-theme', theme);
 
@@ -228,13 +229,7 @@
         themeBtn.textContent = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема';
       }
 
-      function normalizeBotsResponse(json) {
-        if (Array.isArray(json)) return json;
-        if (json && typeof json === 'object') return [json];
-        return [];
-      }
-
-      function normalizeSignalsResponse(json) {
+      function normalizeResponse(json) {
         if (Array.isArray(json)) return json;
         if (json && typeof json === 'object') return [json];
         return [];
@@ -292,15 +287,16 @@
         }).join('');
       }
 
-      function renderSignalsTable(signals) {
-        if (!signals || !signals.length) {
-          workLogBody.innerHTML = `<tr><td colspan="13">Сигналы не найдены</td></tr>`;
+      function renderSignalsTable() {
+        if (!signalsState.length) {
+          workLogBody.innerHTML = `<tr><td colspan="14">Сигналы не найдены</td></tr>`;
           return;
         }
 
-        workLogBody.innerHTML = signals.map((signal) => `
+        workLogBody.innerHTML = signalsState.map((signal) => `
           <tr>
             <td>${formatDate(signal.created_at)}</td>
+            <td>${boolLabel(signal.ready)}</td>
             <td><strong>${signal.symbol ?? '-'}</strong></td>
             <td>${signal.timeframe ?? '-'}</td>
             <td>${formatNumber(signal.price, 8)}</td>
@@ -338,7 +334,6 @@
 
       async function loadBots() {
         botsTableBody.innerHTML = `<tr><td colspan="5">Загрузка...</td></tr>`;
-
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_bots', {
             method: 'POST',
@@ -348,7 +343,7 @@
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
           const json = await res.json();
-          botsState = normalizeBotsResponse(json);
+          botsState = normalizeResponse(json);
 
           if (!botsState.length) {
             botsTableBody.innerHTML = `<tr><td colspan="5">Боты не найдены</td></tr>`;
@@ -365,7 +360,7 @@
       }
 
       async function loadSignals() {
-        workLogBody.innerHTML = `<tr><td colspan="13">Загрузка...</td></tr>`;
+        workLogBody.innerHTML = `<tr><td colspan="14">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
             method: 'POST',
@@ -375,11 +370,11 @@
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
           const json = await res.json();
-          signalsState = normalizeSignalsResponse(json);
-          renderSignalsTable(signalsState);
+          signalsState = normalizeResponse(json);
+          renderSignalsTable();
         } catch (error) {
           console.error('loadSignals error:', error);
-          workLogBody.innerHTML = `<tr><td colspan="13">Ошибка загрузки сигналов</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="14">Ошибка загрузки сигналов</td></tr>`;
         }
       }
 
