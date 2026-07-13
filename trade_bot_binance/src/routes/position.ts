@@ -7,8 +7,6 @@ import {
   getPosition,
   openPosition
 } from '../services/positionState';
-import { analyzeMarket } from '../services/strategy';
-import { getCandles } from '../services/exchange';
 
 const router = Router();
 
@@ -29,7 +27,7 @@ router.post('/open', async (req, res) => {
       stopLossPrice?: number;
     };
 
-    if (!symbol || !takeProfitPrice || !stopLossPrice) {
+    if (!symbol || takeProfitPrice == null || stopLossPrice == null) {
       return res.status(400).json({
         ok: false,
         message: 'symbol, takeProfitPrice, stopLossPrice are required'
@@ -37,7 +35,11 @@ router.post('/open', async (req, res) => {
     }
 
     if (getPosition()) {
-      return res.status(409).json({ ok: false, message: 'Position already open', position: getPosition() });
+      return res.status(409).json({
+        ok: false,
+        message: 'Position already open',
+        position: getPosition()
+      });
     }
 
     const entryPrice = await getCurrentPrice(symbol);
@@ -47,27 +49,6 @@ router.post('/open', async (req, res) => {
       takeProfitPrice,
       stopLossPrice
     });
-
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({
-      ok: false,
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-router.post('/close', async (req, res) => {
-  try {
-    const { reason } = req.body as { reason?: 'take_profit' | 'stop_loss' | 'manual' };
-
-    if (!getPosition()) {
-      return res.status(409).json({ ok: false, message: 'No open position' });
-    }
-
-    const pos = getPosition()!;
-    const exitPrice = await getCurrentPrice(pos.symbol);
-    const result = closePosition(exitPrice, reason || 'manual');
 
     res.json(result);
   } catch (error) {
@@ -104,6 +85,27 @@ router.get('/check-close', async (_req, res) => {
       currentPrice,
       position: pos
     });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+router.post('/close', async (req, res) => {
+  try {
+    const { reason } = req.body as { reason?: 'take_profit' | 'stop_loss' | 'manual' };
+    const pos = getPosition();
+
+    if (!pos) {
+      return res.status(409).json({ ok: false, message: 'No open position' });
+    }
+
+    const exitPrice = await getCurrentPrice(pos.symbol);
+    const result = closePosition(exitPrice, reason || 'manual');
+
+    res.json(result);
   } catch (error) {
     res.status(500).json({
       ok: false,
