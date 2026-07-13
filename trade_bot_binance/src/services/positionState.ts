@@ -1,27 +1,93 @@
 export interface VirtualPosition {
   symbol: string;
   entryPrice: number;
+  quantity: number;
+  notional: number;
   takeProfitPrice: number;
   stopLossPrice: number;
   openedAt: string;
 }
 
+export interface ClosedTrade {
+  symbol: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  notional: number;
+  realizedPnL: number;
+  closedAt: string;
+  reason: 'take_profit' | 'stop_loss' | 'manual';
+}
+
+const STARTING_BALANCE = 500;
+const POSITION_PERCENT = 0.10;
+
+let balance = STARTING_BALANCE;
 let currentPosition: VirtualPosition | null = null;
+let lastClosedTrade: ClosedTrade | null = null;
+
+export function getBalance() {
+  return balance;
+}
 
 export function getPosition() {
   return currentPosition;
 }
 
-export function openPosition(pos: VirtualPosition) {
+export function getLastClosedTrade() {
+  return lastClosedTrade;
+}
+
+export function getPositionNotional() {
+  return balance * POSITION_PERCENT;
+}
+
+export function openPosition(data: {
+  symbol: string;
+  entryPrice: number;
+  takeProfitPrice: number;
+  stopLossPrice: number;
+}) {
   if (currentPosition) {
     return { ok: false, message: 'Position already open', position: currentPosition };
   }
-  currentPosition = pos;
-  return { ok: true, position: currentPosition };
+
+  const notional = getPositionNotional();
+  const quantity = notional / data.entryPrice;
+
+  currentPosition = {
+    symbol: data.symbol,
+    entryPrice: data.entryPrice,
+    quantity,
+    notional,
+    takeProfitPrice: data.takeProfitPrice,
+    stopLossPrice: data.stopLossPrice,
+    openedAt: new Date().toISOString()
+  };
+
+  return { ok: true, balance, position: currentPosition };
 }
 
-export function closePosition() {
-  const closed = currentPosition;
+export function closePosition(exitPrice: number, reason: 'take_profit' | 'stop_loss' | 'manual') {
+  if (!currentPosition) {
+    return { ok: false, message: 'No open position' };
+  }
+
+  const realizedPnL = (exitPrice - currentPosition.entryPrice) * currentPosition.quantity;
+
+  lastClosedTrade = {
+    symbol: currentPosition.symbol,
+    entryPrice: currentPosition.entryPrice,
+    exitPrice,
+    quantity: currentPosition.quantity,
+    notional: currentPosition.notional,
+    realizedPnL,
+    closedAt: new Date().toISOString(),
+    reason
+  };
+
+  balance = balance + realizedPnL;
   currentPosition = null;
-  return { ok: true, closed };
+
+  return { ok: true, balance, lastClosedTrade };
 }
