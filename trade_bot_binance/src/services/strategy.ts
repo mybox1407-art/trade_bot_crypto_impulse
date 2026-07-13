@@ -3,6 +3,9 @@ import { EMA, MACD, RSI, ATR } from 'technicalindicators';
 const FEE_PER_SIDE = 0.00075;
 const ROUND_TRIP_FEE = FEE_PER_SIDE * 2;
 
+const TP_MULTIPLIER = 2.5;
+const SL_MULTIPLIER = 1.5;
+
 export interface Candle {
   time: number;
   open: number;
@@ -51,14 +54,14 @@ export function analyzeMarket(candles: Candle[]) {
   const rsiOk = lastRsi > 40 && lastRsi < 65;
   const buy = trendUp && macdCrossUp && rsiOk;
 
-  const takeProfitPct = 0.045 + ROUND_TRIP_FEE;
-  const stopLossPct = Math.min((1.5 * lastAtr) / lastClose, 0.02);
+  const takeProfitPrice = buy ? lastClose + lastAtr * TP_MULTIPLIER : null;
+  const stopLossPrice = buy ? lastClose - lastAtr * SL_MULTIPLIER : null;
 
   return {
     price: lastClose,
     buy,
-    takeProfitPrice: buy ? lastClose * (1 + takeProfitPct) : null,
-    stopLossPrice: buy ? lastClose * (1 - stopLossPct) : null,
+    takeProfitPrice,
+    stopLossPrice,
     indicators: { trendUp, macdCrossUp, rsiOk, lastRsi, lastAtr, ready: true }
   };
 }
