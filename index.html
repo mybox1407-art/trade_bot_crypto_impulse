@@ -70,8 +70,6 @@
     .ghost-btn:hover{background:var(--color-surface-2)}
     .primary-btn{background:var(--color-primary);color:#fff}
     .primary-btn:hover{background:var(--color-primary-hover)}
-    .secondary-btn{background:var(--color-primary-highlight);color:var(--color-primary)}
-    .danger-btn{background:color-mix(in srgb,var(--color-error) 14%, var(--color-surface));color:var(--color-error)}
     .equal-btn{min-width:128px;justify-content:center;display:inline-flex;align-items:center}
     .overview,.stack{display:grid;gap:var(--space-6);align-items:start}
     .overview{grid-template-columns:1fr}
@@ -98,7 +96,7 @@
       .app{padding:var(--space-4)}
       .topbar,.card-header{align-items:flex-start;flex-direction:column}
       .toolbar,.card-actions{width:100%}
-      .ghost-btn,.primary-btn,.secondary-btn,.danger-btn,.equal-btn{width:100%}
+      .ghost-btn,.primary-btn,.equal-btn{width:100%}
       .mobile-note{display:block}
     }
   </style>
@@ -172,7 +170,7 @@
               </tr>
             </thead>
             <tbody id="workLogBody">
-              <tr><td colspan="14">Загрузка...</td></tr>
+              <tr><td colspan="11">Загрузка...</td></tr>
             </tbody>
           </table>
         </div>
@@ -275,9 +273,9 @@
         }
 
         botsTableBody.innerHTML = botsState.map((bot) => {
-          const isActive = String(bot.id_bot) === String(currentBotId);
+          const active = String(bot.id_bot) === String(currentBotId);
           return `
-            <tr data-bot-id="${bot.id_bot}" class="${isActive ? 'active' : ''}">
+            <tr data-bot-id="${bot.id_bot}" class="${active ? 'active' : ''}">
               <td><strong>${bot.name_bot ?? '-'}</strong></td>
               <td>${formatDate(bot.date_start)}</td>
               <td>${bot.couple ?? '-'}</td>
@@ -290,7 +288,7 @@
 
       function renderSignalsTable() {
         if (!signalsState.length) {
-          workLogBody.innerHTML = `<tr><td colspan="14">Сигналы не найдены</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="11">Сигналы не найдены</td></tr>`;
           return;
         }
 
@@ -358,11 +356,11 @@
 
       async function loadSignals(botId = currentBotId) {
         if (!botId) {
-          workLogBody.innerHTML = `<tr><td colspan="14">Бот не выбран</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="11">Бот не выбран</td></tr>`;
           return;
         }
 
-        workLogBody.innerHTML = `<tr><td colspan="14">Загрузка...</td></tr>`;
+        workLogBody.innerHTML = `<tr><td colspan="11">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
             method: 'POST',
@@ -380,7 +378,7 @@
           renderSignalsTable();
         } catch (error) {
           console.error('loadSignals error:', error);
-          workLogBody.innerHTML = `<tr><td colspan="14">Ошибка загрузки сигналов</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="11">Ошибка загрузки сигналов</td></tr>`;
         }
       }
 
