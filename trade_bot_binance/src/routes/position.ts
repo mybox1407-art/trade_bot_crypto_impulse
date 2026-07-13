@@ -19,6 +19,13 @@ router.get('/status', (_req, res) => {
   });
 });
 
+router.get('/balance', (_req, res) => {
+  res.json({
+    ok: true,
+    balance: getBalance()
+  });
+});
+
 router.post('/open', async (req, res) => {
   try {
     const { symbol, takeProfitPrice, stopLossPrice } = req.body as {
