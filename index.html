@@ -158,9 +158,19 @@
           <table>
             <thead>
               <tr>
-                <th>Событие</th>
-                <th>Дата</th>
-                <th>Комментарий</th>
+                <th>Created At</th>
+                <th>Symbol</th>
+                <th>Timeframe</th>
+                <th>Price</th>
+                <th>Buy</th>
+                <th>Take Profit</th>
+                <th>Stop Loss</th>
+                <th>Trend Up</th>
+                <th>MACD Cross Up</th>
+                <th>RSI OK</th>
+                <th>Last RSI</th>
+                <th>Last ATR</th>
+                <th>Indicators Ready</th>
               </tr>
             </thead>
             <tbody id="workLogBody"></tbody>
@@ -210,6 +220,7 @@
       let theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       let botsState = [];
       let currentBotId = null;
+      let signalsState = [];
 
       root.setAttribute('data-theme', theme);
 
@@ -218,6 +229,12 @@
       }
 
       function normalizeBotsResponse(json) {
+        if (Array.isArray(json)) return json;
+        if (json && typeof json === 'object') return [json];
+        return [];
+      }
+
+      function normalizeSignalsResponse(json) {
         if (Array.isArray(json)) return json;
         if (json && typeof json === 'object') return [json];
         return [];
@@ -241,7 +258,18 @@
         if (!value) return '-';
         const d = new Date(value);
         if (Number.isNaN(d.getTime())) return value;
-        return d.toLocaleDateString('ru-RU');
+        return d.toLocaleString('ru-RU');
+      }
+
+      function formatNumber(value, digits = 8) {
+        if (value === null || value === undefined || value === '') return '-';
+        const n = Number(value);
+        if (Number.isNaN(n)) return String(value);
+        return n.toFixed(digits).replace(/\.?0+$/, '');
+      }
+
+      function boolLabel(value) {
+        return value ? 'Да' : 'Нет';
       }
 
       function renderBotsTable() {
@@ -264,20 +292,36 @@
         }).join('');
       }
 
-      function renderBotDetails(bot) {
-        if (!bot) {
-          workLogBody.innerHTML = `<tr><td colspan="3">Нет данных.</td></tr>`;
-          tradeLogBody.innerHTML = `<tr><td colspan="11">Нет данных.</td></tr>`;
+      function renderSignalsTable(signals) {
+        if (!signals || !signals.length) {
+          workLogBody.innerHTML = `<tr><td colspan="13">Сигналы не найдены</td></tr>`;
           return;
         }
 
-        workLogBody.innerHTML = `
+        workLogBody.innerHTML = signals.map((signal) => `
           <tr>
-            <td>Выбран бот</td>
-            <td>${formatDate(bot.date_start)}</td>
-            <td>${bot.name_bot ?? '-'}</td>
+            <td>${formatDate(signal.created_at)}</td>
+            <td><strong>${signal.symbol ?? '-'}</strong></td>
+            <td>${signal.timeframe ?? '-'}</td>
+            <td>${formatNumber(signal.price, 8)}</td>
+            <td>${boolLabel(signal.buy)}</td>
+            <td>${signal.take_profit_price != null ? formatNumber(signal.take_profit_price, 8) : '-'}</td>
+            <td>${signal.stop_loss_price != null ? formatNumber(signal.stop_loss_price, 8) : '-'}</td>
+            <td>${boolLabel(signal.trend_up)}</td>
+            <td>${boolLabel(signal.macd_cross_up)}</td>
+            <td>${boolLabel(signal.rsi_ok)}</td>
+            <td>${formatNumber(signal.last_rsi, 4)}</td>
+            <td>${formatNumber(signal.last_atr, 8)}</td>
+            <td>${boolLabel(signal.indicators_ready)}</td>
           </tr>
-        `;
+        `).join('');
+      }
+
+      function renderBotDetails(bot) {
+        if (!bot) {
+          tradeLogBody.innerHTML = `<tr><td colspan="11">Нет данных.</td></tr>`;
+          return;
+        }
 
         tradeLogBody.innerHTML = `
           <tr>
@@ -297,7 +341,7 @@
 
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_bots', {
-            method: 'POST',
+            method: 'GET',
             headers: { 'Accept': 'application/json' }
           });
 
@@ -320,6 +364,25 @@
         }
       }
 
+      async function loadSignals() {
+        workLogBody.innerHTML = `<tr><td colspan="13">Загрузка...</td></tr>`;
+        try {
+          const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+          });
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+          const json = await res.json();
+          signalsState = normalizeSignalsResponse(json);
+          renderSignalsTable(signalsState);
+        } catch (error) {
+          console.error('loadSignals error:', error);
+          workLogBody.innerHTML = `<tr><td colspan="13">Ошибка загрузки сигналов</td></tr>`;
+        }
+      }
+
       applyThemeLabel();
 
       themeBtn.addEventListener('click', () => {
@@ -328,9 +391,7 @@
         applyThemeLabel();
       });
 
-      refreshSignalsBtn.addEventListener('click', () => {
-        renderBotDetails(botsState.find((b) => String(b.id_bot) === String(currentBotId)));
-      });
+      refreshSignalsBtn.addEventListener('click', loadSignals);
 
       botsTableBody.addEventListener('click', (event) => {
         const row = event.target.closest('tr[data-bot-id]');
@@ -339,6 +400,7 @@
       });
 
       loadBots();
+      loadSignals();
     })();
   </script>
 </body>
