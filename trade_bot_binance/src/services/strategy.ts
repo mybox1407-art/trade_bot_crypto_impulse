@@ -2,7 +2,6 @@ import { EMA, MACD, RSI, ATR } from 'technicalindicators';
 
 const FEE_PER_SIDE = 0.00075;
 const ROUND_TRIP_FEE = FEE_PER_SIDE * 2;
-
 const TP_MULTIPLIER = 2.5;
 const SL_MULTIPLIER = 1.5;
 
