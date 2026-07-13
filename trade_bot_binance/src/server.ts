@@ -1,6 +1,7 @@
 import { app } from './app';
-import { env } from './config/env';
 
-app.listen(env.port, '0.0.0.0', () => {
-  console.log(`Server started on port ${env.port}`);
+const port = Number(process.env.PORT) || 3001;
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server started on port ${port}`);
 });
