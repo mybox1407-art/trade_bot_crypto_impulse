@@ -158,20 +158,17 @@
           <table>
             <thead>
               <tr>
-                <th>Created</th>
-                <th>Ready</th>
-                <th>Symbol</th>
-                <th>TFrame</th>
-                <th>Price</th>
-                <th>Buy</th>
-                <th>T Profit</th>
-                <th>Stop Loss</th>
-                <th>Trend Up</th>
+                <th>Дата</th>
+                <th>ТФрейм</th>
+                <th>Цена</th>
+                <th>Тейк</th>
+                <th>Лосс</th>
+                <th>ТрендАп</th>
                 <th>MACD</th>
                 <th>RSI OK</th>
                 <th>Last RSI</th>
                 <th>Last ATR</th>
-                <th>I Ready</th>
+                <th>IREady</th>
               </tr>
             </thead>
             <tbody id="workLogBody">
@@ -300,11 +297,8 @@
         workLogBody.innerHTML = signalsState.map((signal) => `
           <tr>
             <td>${formatDate(signal.created_at)}</td>
-            <td>${boolLabel(signal.ready)}</td>
-            <td><strong>${signal.symbol ?? '-'}</strong></td>
             <td>${signal.timeframe ?? '-'}</td>
             <td>${formatNumber(signal.price, 8)}</td>
-            <td>${boolLabel(signal.buy)}</td>
             <td>${signal.take_profit_price != null ? formatNumber(signal.take_profit_price, 8) : '-'}</td>
             <td>${signal.stop_loss_price != null ? formatNumber(signal.stop_loss_price, 8) : '-'}</td>
             <td>${boolLabel(signal.trend_up)}</td>
