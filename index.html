@@ -174,7 +174,9 @@
                 <th>I Ready</th>
               </tr>
             </thead>
-            <tbody id="workLogBody"></tbody>
+            <tbody id="workLogBody">
+              <tr><td colspan="14">Загрузка...</td></tr>
+            </tbody>
           </table>
         </div>
       </section>
@@ -202,7 +204,9 @@
                 <th>Результат</th>
               </tr>
             </thead>
-            <tbody id="tradeLogBody"></tbody>
+            <tbody id="tradeLogBody">
+              <tr><td colspan="11">Загрузка...</td></tr>
+            </tbody>
           </table>
         </div>
       </section>
@@ -330,7 +334,7 @@
         currentBotId = botId;
         renderBotsTable();
         renderBotDetails(botsState.find((b) => String(b.id_bot) === String(botId)));
-        loadSignals();
+        loadSignals(botId);
       }
 
       async function loadBots() {
@@ -351,16 +355,19 @@
             return;
           }
 
-          currentBotId = botsState[0].id_bot;
-          renderBotsTable();
-          renderBotDetails(botsState[0]);
+          selectBot(botsState[0].id_bot);
         } catch (error) {
           console.error('loadBots error:', error);
           botsTableBody.innerHTML = `<tr><td colspan="5">Ошибка загрузки ботов</td></tr>`;
         }
       }
 
-      async function loadSignals() {
+      async function loadSignals(botId = currentBotId) {
+        if (!botId) {
+          workLogBody.innerHTML = `<tr><td colspan="14">Бот не выбран</td></tr>`;
+          return;
+        }
+
         workLogBody.innerHTML = `<tr><td colspan="14">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
@@ -369,9 +376,7 @@
               'Accept': 'application/json',
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              id_bot: Number(currentBotId)
-            })
+            body: JSON.stringify({ id_bot: Number(botId) })
           });
 
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -393,7 +398,7 @@
         applyThemeLabel();
       });
 
-      refreshSignalsBtn.addEventListener('click', loadSignals);
+      refreshSignalsBtn.addEventListener('click', () => loadSignals(currentBotId));
 
       botsTableBody.addEventListener('click', (event) => {
         const row = event.target.closest('tr[data-bot-id]');
@@ -402,7 +407,6 @@
       });
 
       loadBots();
-      loadSignals();
     })();
   </script>
 </body>
