@@ -1,9 +1,7 @@
 import { getCandles } from './exchange';
 import { analyzeMarket, detectMarketRegime } from './strategy';
 
-export async function runBotOnce() {
-  const symbol = 'BTC/USDT';
-  const timeframe = '15m';
+export async function runBotOnce(symbol = 'BTC/USDT', timeframe = '15m') {
   const candles = await getCandles(symbol, timeframe, 250);
 
   if (candles.length < 200) {
@@ -14,9 +12,7 @@ export async function runBotOnce() {
   return { symbol, timeframe, ready: true, ...result };
 }
 
-export async function getMarketRegimeOnce() {
-  const symbol = 'BTC/USDT';
-  const timeframe = '15m';
+export async function getMarketRegimeOnce(symbol = 'BTC/USDT', timeframe = '15m') {
   const candles = await getCandles(symbol, timeframe, 250);
 
   if (candles.length < 200) {
