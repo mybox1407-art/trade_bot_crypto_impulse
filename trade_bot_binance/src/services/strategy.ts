@@ -17,6 +17,19 @@ export interface Candle {
 
 export type MarketRegime = 'trend_up' | 'trend_down' | 'range' | 'breakout_watch' | 'high_volatility' | 'unknown';
 
+type RegimeIndicators = {
+  lastClose: number;
+  lastAtr: number;
+  atrPct: number;
+  adx: number;
+  adxRising: boolean;
+  ema20: number;
+  ema50: number;
+  ema200: number;
+  bbWidth: number;
+  avgVol20: number;
+};
+
 function last<T>(arr: T[]) {
   return arr[arr.length - 1];
 }
@@ -36,7 +49,6 @@ export function detectMarketRegime(candles: Candle[]) {
   const lows = candles.map(c => c.low);
   const volumes = candles.map(c => c.volume);
 
-  // Набор индикаторов для определения режима рынка
   const atr = ATR.calculate({ period: 14, high: highs, low: lows, close: closes });
   const adx = ADX.calculate({ period: 14, high: highs, low: lows, close: closes });
   const ema20 = EMA.calculate({ period: 20, values: closes });
@@ -44,9 +56,8 @@ export function detectMarketRegime(candles: Candle[]) {
   const ema200 = EMA.calculate({ period: 200, values: closes });
   const bb = BollingerBands.calculate({ period: 20, values: closes, stdDev: 2 });
 
-  // Если данных недостаточно, режим пока не определяем
   if (atr.length < 2 || adx.length < 2 || ema20.length < 1 || ema50.length < 1 || ema200.length < 1 || bb.length < 1) {
-    return { regime: 'unknown' as MarketRegime, ready: false };
+    return { regime: 'unknown' as MarketRegime, ready: false, indicators: null as RegimeIndicators | null };
   }
 
   const lastClose = last(closes);
@@ -63,7 +74,6 @@ export function detectMarketRegime(candles: Candle[]) {
   const atrPct = lastAtr / lastClose;
   const compression = bbWidth <= BB_SQUEEZE_THRESHOLD;
 
-  // Сильный восходящий тренд
   const strongTrendUp =
     lastClose > lastEma200 &&
     lastEma20 > lastEma50 &&
@@ -71,7 +81,6 @@ export function detectMarketRegime(candles: Candle[]) {
     lastAdx.adx >= MIN_ADX_TREND &&
     adxRising;
 
-  // Сильный нисходящий тренд
   const strongTrendDown =
     lastClose < lastEma200 &&
     lastEma20 < lastEma50 &&
@@ -79,17 +88,8 @@ export function detectMarketRegime(candles: Candle[]) {
     lastAdx.adx >= MIN_ADX_TREND &&
     adxRising;
 
-  // Боковик
   const range = lastAdx.adx < MIN_ADX_RANGE && bbWidth < 0.08;
-
-  // Подготовка к пробою
-  const breakoutWatch =
-    compression &&
-    lastAdx.adx >= 15 &&
-    lastAdx.adx <= 28 &&
-    getVolumeSpike(volumes, avgVol20);
-
-  // Экстремальная волатильность
+  const breakoutWatch = compression && lastAdx.adx >= 15 && lastAdx.adx <= 28 && getVolumeSpike(volumes, avgVol20);
   const highVolatility = atrPct > 0.025 || bbWidth > 0.12;
 
   let regime: MarketRegime = 'range';
@@ -113,7 +113,7 @@ export function detectMarketRegime(candles: Candle[]) {
       ema200: lastEma200,
       bbWidth,
       avgVol20
-    }
+    } satisfies RegimeIndicators
   };
 }
 
@@ -122,22 +122,13 @@ export function analyzeMarket(candles: Candle[]) {
   const highs = candles.map(c => c.high);
   const lows = candles.map(c => c.low);
 
-  // Сначала определяем режим рынка, затем под него строим логику входа
   const regimeInfo = detectMarketRegime(candles);
-  const macd = MACD.calculate({
-    values: closes,
-    fastPeriod: 12,
-    slowPeriod: 26,
-    signalPeriod: 9,
-    SimpleMAOscillator: false,
-    SimpleMASignal: false
-  });
+  const macd = MACD.calculate({ values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, SimpleMAOscillator: false, SimpleMASignal: false });
   const rsi = RSI.calculate({ period: 14, values: closes });
   const atr = ATR.calculate({ period: 14, high: highs, low: lows, close: closes });
   const bb = BollingerBands.calculate({ period: 20, values: closes, stdDev: 2 });
 
-  // Без достаточного набора индикаторов сигнал не выдаём
-  if (!regimeInfo.ready || macd.length < 2 || rsi.length < 1 || atr.length < 1 || bb.length < 1) {
+  if (!regimeInfo.ready || !regimeInfo.indicators || macd.length < 2 || rsi.length < 1 || atr.length < 1 || bb.length < 1) {
     return {
       price: closes[closes.length - 1],
       buy: false,
@@ -157,17 +148,15 @@ export function analyzeMarket(candles: Candle[]) {
   const lastRsi = last(rsi);
   const lastAtr = last(atr);
   const lastBb = last(bb);
+  const regimeIndicators = regimeInfo.indicators;
 
-  // Сигналы подтверждения для импульса
   const macdCrossUp = prevMacd.MACD! < prevMacd.signal! && lastMacd.MACD! > lastMacd.signal!;
   const macdCrossDown = prevMacd.MACD! > prevMacd.signal! && lastMacd.MACD! < lastMacd.signal!;
   const rsiBull = lastRsi > 40 && lastRsi < 65;
   const rsiBear = lastRsi < 60 && lastRsi > 35;
 
-  // Риск на сделку фиксируем как долю капитала
   const riskCapital = STARTING_BALANCE * MAX_RISK_PER_TRADE;
   const regime = regimeInfo.regime;
-
   let side: 'long' | 'short' | 'none' = 'none';
   let buy = false;
   let sell = false;
@@ -175,27 +164,23 @@ export function analyzeMarket(candles: Candle[]) {
   let stopLossPrice: number | null = null;
   let positionSize: number | null = null;
 
-  // Восходящий тренд: long по импульсу
-  if (regime === 'trend_up' && macdCrossUp && rsiBull && price > regimeInfo.indicators.ema200) {
+  if (regime === 'trend_up' && macdCrossUp && rsiBull && price > regimeIndicators.ema200) {
     side = 'long';
     buy = true;
     stopLossPrice = price - lastAtr * 1.4;
     takeProfitPrice = price + lastAtr * 2.8;
   }
 
-  // Нисходящий тренд: short по импульсу
-  if (regime === 'trend_down' && macdCrossDown && rsiBear && price < regimeInfo.indicators.ema200) {
+  if (regime === 'trend_down' && macdCrossDown && rsiBear && price < regimeIndicators.ema200) {
     side = 'short';
     sell = true;
     stopLossPrice = price + lastAtr * 1.4;
     takeProfitPrice = price - lastAtr * 2.8;
   }
 
-  // Флэт: играем возврат к средней
   if (regime === 'range') {
     const longSetup = price <= lastBb.lower && lastRsi <= 30;
     const shortSetup = price >= lastBb.upper && lastRsi >= 70;
-
     if (longSetup) {
       side = 'long';
       buy = true;
@@ -209,11 +194,9 @@ export function analyzeMarket(candles: Candle[]) {
     }
   }
 
-  // Режим ожидания пробоя после сжатия волатильности
   if (regime === 'breakout_watch') {
     const breakoutUp = price > lastBb.upper && lastRsi > 55;
     const breakoutDown = price < lastBb.lower && lastRsi < 45;
-
     if (breakoutUp) {
       side = 'long';
       buy = true;
@@ -227,14 +210,12 @@ export function analyzeMarket(candles: Candle[]) {
     }
   }
 
-  // При слишком высокой волатильности лучше не входить
   if (regime === 'high_volatility') {
     buy = false;
     sell = false;
     side = 'none';
   }
 
-  // Размер позиции считаем от расстояния до стоп-лосса
   if (side !== 'none' && stopLossPrice != null) {
     const riskPerUnit = Math.abs(price - stopLossPrice);
     positionSize = riskPerUnit > 0 ? riskCapital / riskPerUnit : null;
@@ -260,7 +241,7 @@ export function analyzeMarket(candles: Candle[]) {
       bbMiddle: lastBb.middle,
       bbLower: lastBb.lower,
       regimeReady: regimeInfo.ready,
-      regimeIndicators: regimeInfo.indicators,
+      regimeIndicators,
       ready: true
     }
   };
