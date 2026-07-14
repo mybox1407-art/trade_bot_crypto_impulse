@@ -186,17 +186,24 @@
                 <th>Дата</th>
                 <th>ТФрейм</th>
                 <th>Цена</th>
+                <th>Buy</th>
+                <th>Sell</th>
+                <th>Side</th>
+                <th>Regime</th>
+                <th>Pos Size</th>
                 <th>Тейк</th>
                 <th>Лосс</th>
-                <th>ТрендАп</th>
-                <th>MACD</th>
+                <th>MACD Up</th>
+                <th>MACD Down</th>
                 <th>RSI OK</th>
                 <th>Last RSI</th>
                 <th>Last ATR</th>
+                <th>ADX</th>
+                <th>BB Width</th>
               </tr>
             </thead>
             <tbody id="workLogBody">
-              <tr><td colspan="10">Загрузка...</td></tr>
+              <tr><td colspan="18">Загрузка...</td></tr>
             </tbody>
           </table>
         </div>
@@ -363,7 +370,7 @@
         nextPageBtn.disabled = currentPage >= pageCount;
 
         if (!pageItems.length) {
-          workLogBody.innerHTML = `<tr><td colspan="10">Сигналы не найдены</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="18">Сигналы не найдены</td></tr>`;
           return;
         }
 
@@ -374,13 +381,20 @@
               <td>${formatDate(signal.created_at)}</td>
               <td>${signal.timeframe ?? '-'}</td>
               <td>${formatNumber(signal.price, 8)}</td>
+              <td>${signal.buy ? 'Да' : 'Нет'}</td>
+              <td>${signal.sell ? 'Да' : 'Нет'}</td>
+              <td>${signal.side ?? '-'}</td>
+              <td>${signal.regime ?? '-'}</td>
+              <td>${signal.position_size != null ? formatNumber(signal.position_size, 12) : '-'}</td>
               <td>${signal.take_profit_price != null ? formatNumber(signal.take_profit_price, 8) : '-'}</td>
               <td>${signal.stop_loss_price != null ? formatNumber(signal.stop_loss_price, 8) : '-'}</td>
-              <td>-</td>
               <td>${boolLabel(signal.macd_cross_up)}</td>
+              <td>${boolLabel(signal.macd_cross_down)}</td>
               <td>${boolLabel(signal.rsi_ok)}</td>
               <td>${formatNumber(signal.last_rsi, 4)}</td>
               <td>${formatNumber(signal.last_atr, 3)}</td>
+              <td>${signal.adx != null ? formatNumber(signal.adx, 4) : '-'}</td>
+              <td>${signal.bb_width != null ? formatNumber(signal.bb_width, 8) : '-'}</td>
             </tr>
           `;
         }).join('');
@@ -434,11 +448,11 @@
 
       async function loadSignals(botId = currentBotId) {
         if (!botId) {
-          workLogBody.innerHTML = `<tr><td colspan="10">Бот не выбран</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="18">Бот не выбран</td></tr>`;
           return;
         }
 
-        workLogBody.innerHTML = `<tr><td colspan="10">Загрузка...</td></tr>`;
+        workLogBody.innerHTML = `<tr><td colspan="18">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
             method: 'POST',
@@ -457,7 +471,7 @@
           renderSignalsTable();
         } catch (error) {
           console.error('loadSignals error:', error);
-          workLogBody.innerHTML = `<tr><td colspan="10">Ошибка загрузки сигналов</td></tr>`;
+          workLogBody.innerHTML = `<tr><td colspan="18">Ошибка загрузки сигналов</td></tr>`;
         }
       }
 
