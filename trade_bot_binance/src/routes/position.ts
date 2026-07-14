@@ -78,7 +78,6 @@ router.get('/check-close', async (_req, res) => {
 
     const currentPrice = await getCurrentPrice(pos.symbol);
 
-    // Для long и short условия закрытия зеркальные
     const hitTakeProfit = pos.side === 'long'
       ? currentPrice >= pos.takeProfitPrice
       : currentPrice <= pos.takeProfitPrice;
