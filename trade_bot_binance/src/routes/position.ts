@@ -28,16 +28,17 @@ router.get('/balance', (_req, res) => {
 
 router.post('/open', async (req, res) => {
   try {
-    const { symbol, takeProfitPrice, stopLossPrice } = req.body as {
+    const { symbol, side, takeProfitPrice, stopLossPrice } = req.body as {
       symbol?: string;
+      side?: 'long' | 'short';
       takeProfitPrice?: number;
       stopLossPrice?: number;
     };
 
-    if (!symbol || takeProfitPrice == null || stopLossPrice == null) {
+    if (!symbol || !side || takeProfitPrice == null || stopLossPrice == null) {
       return res.status(400).json({
         ok: false,
-        message: 'symbol, takeProfitPrice, stopLossPrice are required'
+        message: 'symbol, side, takeProfitPrice, stopLossPrice are required'
       });
     }
 
@@ -52,6 +53,7 @@ router.post('/open', async (req, res) => {
     const entryPrice = await getCurrentPrice(symbol);
     const result = openPosition({
       symbol,
+      side,
       entryPrice,
       takeProfitPrice,
       stopLossPrice
@@ -76,12 +78,21 @@ router.get('/check-close', async (_req, res) => {
 
     const currentPrice = await getCurrentPrice(pos.symbol);
 
-    if (currentPrice >= pos.takeProfitPrice) {
+    // Для long и short условия закрытия зеркальные
+    const hitTakeProfit = pos.side === 'long'
+      ? currentPrice >= pos.takeProfitPrice
+      : currentPrice <= pos.takeProfitPrice;
+
+    const hitStopLoss = pos.side === 'long'
+      ? currentPrice <= pos.stopLossPrice
+      : currentPrice >= pos.stopLossPrice;
+
+    if (hitTakeProfit) {
       const result = closePosition(currentPrice, 'take_profit');
       return res.json({ ok: true, action: 'closed', reason: 'take_profit', currentPrice, result });
     }
 
-    if (currentPrice <= pos.stopLossPrice) {
+    if (hitStopLoss) {
       const result = closePosition(currentPrice, 'stop_loss');
       return res.json({ ok: true, action: 'closed', reason: 'stop_loss', currentPrice, result });
     }
