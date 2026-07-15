@@ -489,16 +489,16 @@
               <td>${formatDate(p.opened_at)}</td>
               <td>${closedAt}</td>
               <td>${p.symbol ?? '-'}</td>
-              <td>${p.balance_before != null ? formatNumber(p.balance_before, 8) : '-'}</td>
+              <td>${p.balance_before != null ? formatNumber(p.balance_before, 3) : '-'}</td>
               <td>${sideLabel(p.side)}</td>
-              <td>${p.entry_price != null ? formatNumber(p.entry_price, 8) : '-'}</td>
-              <td>${p.notional != null ? formatNumber(p.notional, 8) : '-'}</td>
-              <td>${p.take_profit_price != null ? formatNumber(p.take_profit_price, 8) : '-'}</td>
-              <td>${p.stop_loss_price != null ? formatNumber(p.stop_loss_price, 8) : '-'}</td>
+              <td>${p.entry_price != null ? formatNumber(p.entry_price, 3) : '-'}</td>
+              <td>${p.notional != null ? formatNumber(p.notional, 3) : '-'}</td>
+              <td>${p.take_profit_price != null ? formatNumber(p.take_profit_price, 3) : '-'}</td>
+              <td>${p.stop_loss_price != null ? formatNumber(p.stop_loss_price, 3) : '-'}</td>
               <td>${p.close_reason ?? '-'}</td>
-              <td>${p.exit_price != null ? formatNumber(p.exit_price, 8) : '-'}</td>
-              <td>${p.realized_pnl != null ? formatNumber(p.realized_pnl, 8) : '-'}</td>
-              <td>${p.balance_after != null ? formatNumber(p.balance_after, 8) : '-'}</td>
+              <td>${p.exit_price != null ? formatNumber(p.exit_price, 3) : '-'}</td>
+              <td>${p.realized_pnl != null ? formatNumber(p.realized_pnl, 3) : '-'}</td>
+              <td>${p.balance_after != null ? formatNumber(p.balance_after, 3) : '-'}</td>
             </tr>
           `;
         }).join('');
