@@ -161,10 +161,10 @@
         </div>
         <div class="card-actions">
           <button class="primary-btn equal-btn" id="refreshSignalsBtn">Обновить</button>
-          <select id="buyFilter">
-            <option value="all">Покупка = Все</option>
-            <option value="true">Покупка = Да</option>
-            <option value="false">Покупка = Нет</option>
+          <select id="signalFilter">
+            <option value="all">Сигнал = Все</option>
+            <option value="true">Сигнал = Да</option>
+            <option value="false">Сигнал = Нет</option>
           </select>
           <select id="periodFilter">
             <option value="all">Период = Все</option>
@@ -240,7 +240,7 @@
       const root = document.documentElement;
       const themeBtn = document.querySelector('[data-theme-toggle]');
       const refreshSignalsBtn = document.getElementById('refreshSignalsBtn');
-      const buyFilter = document.getElementById('buyFilter');
+      const signalFilter = document.getElementById('signalFilter');
       const periodFilter = document.getElementById('periodFilter');
       const prevPageBtn = document.getElementById('prevPageBtn');
       const nextPageBtn = document.getElementById('nextPageBtn');
@@ -255,7 +255,7 @@
       let currentBotId = null;
       let currentPage = 1;
       const pageSize = 5;
-      let buyFilterValue = 'all';
+      let signalFilterValue = 'all';
       let periodFilterValue = 'all';
 
       root.setAttribute('data-theme', theme);
@@ -337,7 +337,13 @@
         const now = new Date();
 
         return signalsState.filter((s) => {
-          if (buyFilterValue !== 'all' && String(Boolean(s.buy)) !== buyFilterValue) return false;
+          const hasSignal = Boolean(s.buy) || Boolean(s.sell);
+
+          if (signalFilterValue !== 'all') {
+            if (signalFilterValue === 'true' && !hasSignal) return false;
+            if (signalFilterValue === 'false' && hasSignal) return false;
+          }
+
           if (!days) return true;
           const d = new Date(s.created_at);
           if (Number.isNaN(d.getTime())) return false;
@@ -495,8 +501,8 @@
 
       refreshSignalsBtn.addEventListener('click', () => loadSignals(currentBotId));
 
-      buyFilter.addEventListener('change', () => {
-        buyFilterValue = buyFilter.value;
+      signalFilter.addEventListener('change', () => {
+        signalFilterValue = signalFilter.value;
         currentPage = 1;
         renderSignalsTable();
       });
