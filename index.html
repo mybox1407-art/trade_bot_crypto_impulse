@@ -236,7 +236,6 @@
                 <th>Баланс до</th>
                 <th>Стороны</th>
                 <th>Цена</th>
-                <th>Позиция</th>
                 <th>Размер</th>
                 <th>Тайк</th>
                 <th>Стоп</th>
@@ -493,7 +492,6 @@
               <td>${p.balance_before != null ? formatNumber(p.balance_before, 8) : '-'}</td>
               <td>${sideLabel(p.side)}</td>
               <td>${p.entry_price != null ? formatNumber(p.entry_price, 8) : '-'}</td>
-              <td>${p.quantity != null ? formatNumber(p.quantity, 12) : '-'}</td>
               <td>${p.notional != null ? formatNumber(p.notional, 8) : '-'}</td>
               <td>${p.take_profit_price != null ? formatNumber(p.take_profit_price, 8) : '-'}</td>
               <td>${p.stop_loss_price != null ? formatNumber(p.stop_loss_price, 8) : '-'}</td>
