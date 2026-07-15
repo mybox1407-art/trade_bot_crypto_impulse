@@ -83,6 +83,7 @@
     .card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-4);padding:var(--space-5) var(--space-5) var(--space-4)}
     .card-title{font:700 var(--text-lg)/1.15 var(--font-display);letter-spacing:-.025em}
     .table-wrap{overflow:auto;padding:0 var(--space-4) var(--space-4)}
+    #tradeLogBody td, #tradeLogBody th{font-size:0.82rem}
     .table-wrap.fixed-table table{table-layout:fixed}
     th,td{text-align:left;padding:14px 12px;border-top:1px solid var(--color-divider);white-space:normal;word-break:break-word;overflow-wrap:anywhere;vertical-align:top;font-size:var(--text-sm)}
     thead th{color:var(--color-text-muted);font-weight:600;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.06em;background:color-mix(in srgb,var(--color-surface) 72%, var(--color-surface-2));position:sticky;top:0}
@@ -237,7 +238,7 @@
                 <th>Стороны</th>
                 <th>Цена</th>
                 <th>Размер</th>
-                <th>Тайк</th>
+                <th>Тейк</th>
                 <th>Стоп</th>
                 <th>Причина</th>
                 <th>Цена выхода</th>
@@ -287,85 +288,18 @@
 
       root.setAttribute('data-theme', theme);
 
-      function applyThemeLabel() {
-        themeBtn.textContent = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема';
-      }
-
-      function normalizeResponse(json) {
-        if (Array.isArray(json)) return json;
-        if (json && typeof json === 'object' && Array.isArray(json.data)) return json.data;
-        if (json && typeof json === 'object') return [json];
-        return [];
-      }
-
-      function formatDate(value) {
-        if (!value) return '-';
-        const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return value;
-        return d.toLocaleString('ru-RU');
-      }
-
-      function formatNumber(value, digits = 8) {
-        if (value === null || value === undefined || value === '') return '-';
-        const n = Number(value);
-        if (Number.isNaN(n)) return String(value);
-        return n.toFixed(digits).replace(/\.?0+$/, '');
-      }
-
-      function boolLabel(value) {
-        return value ? 'Да' : 'Нет';
-      }
-
-      function statusClass(status) {
-        const s = String(status || '').toLowerCase();
-        if (s === 'run' || s === 'running' || s === 'active') return 'running';
-        if (s === 'pause' || s === 'paused') return 'paused';
-        return 'stopped';
-      }
-
-      function statusLabel(status) {
-        const s = String(status || '').toLowerCase();
-        if (s === 'run' || s === 'running' || s === 'active') return 'Running';
-        if (s === 'pause' || s === 'paused') return 'Paused';
-        return 'Stopped';
-      }
-
-      function daysFromPeriod(period) {
-        if (period === 'day') return 1;
-        if (period === 'week') return 7;
-        if (period === '2weeks') return 14;
-        if (period === 'month') return 30;
-        return null;
-      }
-
-      function sideLabel(side) {
-        const s = String(side || '').toLowerCase();
-        if (s === 'none') return '-';
-        if (s === 'long') return 'long';
-        if (s === 'short') return 'short';
-        return side ?? '-';
-      }
-
-      function regimeLabel(regime) {
-        const s = String(regime || '').toLowerCase();
-        const map = {
-          range: 'боковик',
-          trend_up: 'тренд вверх',
-          trend_down: 'тренд вниз',
-          breakout_watch: 'ожидание пробоя',
-          high_volatility: 'высокая волатильность',
-          unknown: 'неизвестно'
-        };
-        return map[s] ?? regime ?? '-';
-      }
-
-      function getPairValue(item) {
-        return String(item.symbol || item.couple || '').trim().toLowerCase();
-      }
-
-      function getAvailablePairsFrom(items) {
-        return [...new Set(items.map(getPairValue).filter(Boolean))].sort();
-      }
+      function applyThemeLabel() { themeBtn.textContent = theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'; }
+      function normalizeResponse(json) { if (Array.isArray(json)) return json; if (json && typeof json === 'object' && Array.isArray(json.data)) return json.data; if (json && typeof json === 'object') return [json]; return []; }
+      function formatDate(value) { if (!value) return '-'; const d = new Date(value); if (Number.isNaN(d.getTime())) return value; return d.toLocaleString('ru-RU'); }
+      function formatNumber(value, digits = 8) { if (value === null || value === undefined || value === '') return '-'; const n = Number(value); if (Number.isNaN(n)) return String(value); return n.toFixed(digits).replace(/\.?0+$/, ''); }
+      function boolLabel(value) { return value ? 'Да' : 'Нет'; }
+      function statusClass(status) { const s = String(status || '').toLowerCase(); if (s === 'run' || s === 'running' || s === 'active') return 'running'; if (s === 'pause' || s === 'paused') return 'paused'; return 'stopped'; }
+      function statusLabel(status) { const s = String(status || '').toLowerCase(); if (s === 'run' || s === 'running' || s === 'active') return 'Running'; if (s === 'pause' || s === 'paused') return 'Paused'; return 'Stopped'; }
+      function daysFromPeriod(period) { if (period === 'day') return 1; if (period === 'week') return 7; if (period === '2weeks') return 14; if (period === 'month') return 30; return null; }
+      function sideLabel(side) { const s = String(side || '').toLowerCase(); if (s === 'none') return '-'; if (s === 'long') return 'long'; if (s === 'short') return 'short'; return side ?? '-'; }
+      function regimeLabel(regime) { const s = String(regime || '').toLowerCase(); const map = { range: 'боковик', trend_up: 'тренд вверх', trend_down: 'тренд вниз', breakout_watch: 'ожидание пробоя', high_volatility: 'высокая волатильность', unknown: 'неизвестно' }; return map[s] ?? regime ?? '-'; }
+      function getPairValue(item) { return String(item.symbol || item.couple || '').trim().toLowerCase(); }
+      function getAvailablePairsFrom(items) { return [...new Set(items.map(getPairValue).filter(Boolean))].sort(); }
 
       function syncPairFilterOptions() {
         const pairs = getAvailablePairsFrom(signalsState);
@@ -416,15 +350,10 @@
         });
       }
 
-      function getPageCount(data) {
-        return Math.max(1, Math.ceil(data.length / pageSize));
-      }
+      function getPageCount(data) { return Math.max(1, Math.ceil(data.length / pageSize)); }
 
       function renderBotsTable() {
-        if (!botsState.length) {
-          botsTableBody.innerHTML = `<tr><td colspan="5">Боты не найдены</td></tr>`;
-          return;
-        }
+        if (!botsState.length) { botsTableBody.innerHTML = `<tr><td colspan="5">Боты не найдены</td></tr>`; return; }
         botsTableBody.innerHTML = botsState.map((bot) => {
           const active = String(bot.id_bot) === String(currentBotId);
           return `
@@ -478,10 +407,7 @@
 
       function renderTradesTable() {
         const filtered = getFilteredTrades();
-        if (!filtered.length) {
-          tradeLogBody.innerHTML = `<tr><td colspan="15">Сделки не найдены</td></tr>`;
-          return;
-        }
+        if (!filtered.length) { tradeLogBody.innerHTML = `<tr><td colspan="15">Сделки не найдены</td></tr>`; return; }
         tradeLogBody.innerHTML = filtered.map((p) => {
           const closedAt = p.closed_at ? formatDate(p.closed_at) : '-';
           return `
@@ -504,13 +430,7 @@
         }).join('');
       }
 
-      function renderBotDetails(bot) {
-        if (!bot) {
-          tradeLogBody.innerHTML = `<tr><td colspan="15">Нет данных.</td></tr>`;
-          return;
-        }
-        renderTradesTable();
-      }
+      function renderBotDetails(bot) { if (!bot) { tradeLogBody.innerHTML = `<tr><td colspan="15">Нет данных.</td></tr>`; return; } renderTradesTable(); }
 
       function selectBot(botId) {
         currentBotId = botId;
@@ -524,17 +444,11 @@
       async function loadBots() {
         botsTableBody.innerHTML = `<tr><td colspan="5">Загрузка...</td></tr>`;
         try {
-          const res = await fetch('https://n8n.kino-test.ru/webhook/get_bots', {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-          });
+          const res = await fetch('https://n8n.kino-test.ru/webhook/get_bots', { method: 'POST', headers: { 'Accept': 'application/json' } });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const json = await res.json();
           botsState = normalizeResponse(json);
-          if (!botsState.length) {
-            botsTableBody.innerHTML = `<tr><td colspan="5">Боты не найдены</td></tr>`;
-            return;
-          }
+          if (!botsState.length) { botsTableBody.innerHTML = `<tr><td colspan="5">Боты не найдены</td></tr>`; return; }
           selectBot(botsState[0].id_bot);
         } catch (error) {
           console.error('loadBots error:', error);
@@ -543,18 +457,12 @@
       }
 
       async function loadSignals(botId = currentBotId) {
-        if (!botId) {
-          workLogBody.innerHTML = `<tr><td colspan="12">Бот не выбран</td></tr>`;
-          return;
-        }
+        if (!botId) { workLogBody.innerHTML = `<tr><td colspan="12">Бот не выбран</td></tr>`; return; }
         workLogBody.innerHTML = `<tr><td colspan="12">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_signals', {
             method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
             body: JSON.stringify({ id_bot: Number(botId) })
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -570,18 +478,12 @@
       }
 
       async function loadPositions(botId = currentBotId) {
-        if (!botId) {
-          tradeLogBody.innerHTML = `<tr><td colspan="15">Бот не выбран</td></tr>`;
-          return;
-        }
+        if (!botId) { tradeLogBody.innerHTML = `<tr><td colspan="15">Бот не выбран</td></tr>`; return; }
         tradeLogBody.innerHTML = `<tr><td colspan="15">Загрузка...</td></tr>`;
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/get_positions', {
             method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
             body: JSON.stringify({ id_bot: Number(botId) })
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -606,33 +508,11 @@
       refreshSignalsBtn.addEventListener('click', () => loadSignals(currentBotId));
       refreshTradesBtn.addEventListener('click', () => loadPositions(currentBotId));
 
-      signalFilter.addEventListener('change', () => {
-        signalFilterValue = signalFilter.value;
-        currentPage = 1;
-        renderSignalsTable();
-      });
-
-      pairFilter.addEventListener('change', () => {
-        pairFilterValue = pairFilter.value;
-        currentPage = 1;
-        renderSignalsTable();
-      });
-
-      periodFilter.addEventListener('change', () => {
-        periodFilterValue = periodFilter.value;
-        currentPage = 1;
-        renderSignalsTable();
-      });
-
-      tradePairFilter.addEventListener('change', () => {
-        tradePairFilterValue = tradePairFilter.value;
-        renderTradesTable();
-      });
-
-      tradePeriodFilter.addEventListener('change', () => {
-        tradePeriodFilterValue = tradePeriodFilter.value;
-        renderTradesTable();
-      });
+      signalFilter.addEventListener('change', () => { signalFilterValue = signalFilter.value; currentPage = 1; renderSignalsTable(); });
+      pairFilter.addEventListener('change', () => { pairFilterValue = pairFilter.value; currentPage = 1; renderSignalsTable(); });
+      periodFilter.addEventListener('change', () => { periodFilterValue = periodFilter.value; currentPage = 1; renderSignalsTable(); });
+      tradePairFilter.addEventListener('change', () => { tradePairFilterValue = tradePairFilter.value; renderTradesTable(); });
+      tradePeriodFilter.addEventListener('change', () => { tradePeriodFilterValue = tradePeriodFilter.value; renderTradesTable(); });
 
       prevPageBtn.addEventListener('click', () => {
         if (currentPage > 1) {
