@@ -236,7 +236,6 @@
                 <th>Открыта</th>
                 <th>Закрыта</th>
                 <th>Пара</th>
-                <th>Баланс до</th>
                 <th>Стороны</th>
                 <th>Цена</th>
                 <th>Размер</th>
@@ -424,7 +423,6 @@
               <td>${formatDate(p.opened_at)}</td>
               <td>${closedAt}</td>
               <td>${p.symbol ?? '-'}</td>
-              <td>${p.balance_before != null ? formatNumber(p.balance_before, 3) : '-'}</td>
               <td>${sideLabel(p.side)}</td>
               <td>${p.entry_price != null ? formatNumber(p.entry_price, 3) : '-'}</td>
               <td>${p.notional != null ? formatNumber(p.notional, 3) : '-'}</td>
