@@ -449,7 +449,7 @@
         currentPositionPriceInput.value = 'Загрузка...';
         try {
           const res = await fetch('https://n8n.kino-test.ru/webhook/check_position', {
-            method: 'POST',
+            method: 'GET',
             headers: { 'Accept': 'application/json' }
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
