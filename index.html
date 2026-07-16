@@ -103,6 +103,8 @@
     .pager{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-left:auto}
     .pager-info{font-size:var(--text-sm);color:var(--color-text-muted);min-width:150px;text-align:center}
     .mobile-note{display:none;color:var(--color-text-muted);font-size:var(--text-sm);margin-top:var(--space-3)}
+    .readonly-field{border:1px solid var(--color-border);background:var(--color-surface-2);color:var(--color-text);text-align:center;cursor:default}
+    .readonly-field:focus{outline:none}
     @media (max-width: 1100px){.overview{grid-template-columns:1fr}}
     @media (max-width: 720px){
       .app{padding:var(--space-4)}
@@ -228,6 +230,8 @@
             <option value="2weeks">За 2 недели</option>
             <option value="month">За месяц</option>
           </select>
+          <input type="text" id="currentPositionPrice" class="ghost-btn equal-btn readonly-field" value="-" readonly aria-label="Текущая цена открытой позиции" />
+          <button class="primary-btn equal-btn" id="refreshPositionPriceBtn">Обновить</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -273,6 +277,8 @@
       const refreshTradesBtn = document.getElementById('refreshTradesBtn');
       const tradePairFilter = document.getElementById('tradePairFilter');
       const tradePeriodFilter = document.getElementById('tradePeriodFilter');
+      const currentPositionPriceInput = document.getElementById('currentPositionPrice');
+      const refreshPositionPriceBtn = document.getElementById('refreshPositionPriceBtn');
 
       let theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       let botsState = [];
@@ -439,6 +445,29 @@
 
       function renderBotDetails(bot) { if (!bot) { tradeLogBody.innerHTML = `<tr><td colspan="15">Нет данных.</td></tr>`; return; } renderTradesTable(); }
 
+      async function loadPositionPrice() {
+        currentPositionPriceInput.value = 'Загрузка...';
+        try {
+          const res = await fetch('https://n8n.kino-test.ru/webhook/check_position', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json' }
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const items = normalizeResponse(json);
+          const item = items[0] || {};
+          const action = String(item.action || '').toLowerCase();
+          if (action === 'hold') {
+            currentPositionPriceInput.value = item.currentPrice != null ? formatNumber(item.currentPrice, 8) : '-';
+          } else {
+            currentPositionPriceInput.value = '-';
+          }
+        } catch (error) {
+          console.error('loadPositionPrice error:', error);
+          currentPositionPriceInput.value = 'Ошибка';
+        }
+      }
+
       function selectBot(botId) {
         currentBotId = botId;
         currentPage = 1;
@@ -446,6 +475,7 @@
         renderBotDetails(botsState.find((b) => String(b.id_bot) === String(botId)));
         loadSignals(botId);
         loadPositions(botId);
+        loadPositionPrice();
       }
 
       async function loadBots() {
@@ -514,6 +544,7 @@
 
       refreshSignalsBtn.addEventListener('click', () => loadSignals(currentBotId));
       refreshTradesBtn.addEventListener('click', () => loadPositions(currentBotId));
+      refreshPositionPriceBtn.addEventListener('click', () => loadPositionPrice());
 
       signalFilter.addEventListener('change', () => { signalFilterValue = signalFilter.value; currentPage = 1; renderSignalsTable(); });
       pairFilter.addEventListener('change', () => { pairFilterValue = pairFilter.value; currentPage = 1; renderSignalsTable(); });
