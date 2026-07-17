@@ -1,7 +1,7 @@
 cd ~
 rm -rf trade_bot
 git clone https://github.com/mybox1407-art/trade_bot_crypto_impulse.git
-cd trade_bot_crypto_impulse/trade_bot_binance
+cd trade_bot_crypto_impulse
 
 
 docker compose up -d --build
