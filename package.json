@@ -1,5 +1,5 @@
 {
-  "name": "trade_bot",
+  "name": "trade_bot_crypto_impulse",
   "version": "1.0.0",
   "description": "",
   "main": "dist/server.js",
