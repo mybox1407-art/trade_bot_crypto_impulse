@@ -1,23 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runStrategyBacktest, SideFilter } from './strategyBacktest';
-import {
-  Candle
-} from '../services/strategy';
+import { Candle } from '../services/strategy';
 
-// ============================================================================
-// КОНСТАНТЫ ЗАПУСКА / ВЫХОДА
-// ============================================================================
 const STARTING_BALANCE = 500;
-const DEFAULT_COOLDOWN_CANDLES = 12;
+const DEFAULT_COOLDOWN_CANDLES = 0;
 const PROGRESS_LOG_EVERY = 250;
 const COMMISSION_RATE = 0.0005;
-const MAX_TRADES_PER_DAY = 0; // 0 = выкл.
+const MAX_TRADES_PER_DAY = 0;
 const ONE_POSITION_AT_TIME = true;
 const CONSERVATIVE_INTRABAR = true;
-const TIME_STOP_BARS = 64;
-const EARLY_ABORT_BARS = 16;
+const TIME_STOP_BARS = 0;
+const EARLY_ABORT_BARS = 0;
 const EARLY_ABORT_MIN_R = 0.35;
+const DEFAULT_WARMUP = 0;
+const CLOSE_OPEN_POSITION_ON_END = false;
 
 const ANSI = {
   reset: '\x1b[0m',
@@ -171,8 +168,9 @@ function printSummary(result: RunResult): void {
 function printRegimeStats(result: RunResult): void {
   const rs = result.regimeStats;
 
+  console.log('\n========== REGIME STATS ==========');
+
   if (!rs || rs.totalBars === 0) {
-    console.log('\n========== REGIME STATS ==========');
     console.log('Нет данных по режимам (totalBars=0).');
     return;
   }
@@ -186,17 +184,16 @@ function printRegimeStats(result: RunResult): void {
     'unknown'
   ];
 
-  console.log('\n========== REGIME STATS ==========');
-  console.log(`Баров после warmup: ${rs.totalBars}`);
+  console.log(`Баров в обработке: ${rs.totalBars}`);
   console.log(`Side filter: ${result.options.sideFilter}`);
 
-  const barParts: string[] = [];
   const regimesSeen = new Set([
     ...order,
     ...Object.keys(rs.barsByRegime),
     ...Object.keys(rs.tradesByRegime)
   ]);
 
+  const barParts: string[] = [];
   for (const reg of [...order, ...[...regimesSeen].filter(r => !order.includes(r))]) {
     const b = rs.barsByRegime[reg];
     if (!b && !rs.tradesByRegime[reg]) continue;
@@ -216,21 +213,20 @@ function printRegimeStats(result: RunResult): void {
 
   if (!tradeRegs.length) {
     console.log(' (сделок нет)');
-  }
+  } else {
+    for (const reg of tradeRegs) {
+      const t = rs.tradesByRegime[reg];
+      const pf = Number.isFinite(t.profitFactor) ? t.profitFactor.toFixed(3) : 'Infinity';
+      const wr = (t.winRate * 100).toFixed(1);
+      const reasons = Object.entries(t.closeReasons)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}=${v}`)
+        .join(', ');
 
-  for (const reg of tradeRegs) {
-    const t = rs.tradesByRegime[reg];
-    const pf = Number.isFinite(t.profitFactor) ? t.profitFactor.toFixed(3) : 'Infinity';
-    const wr = (t.winRate * 100).toFixed(1);
-    const reasons = Object.entries(t.closeReasons)
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, v]) => `${k}=${v}`)
-      .join(', ');
-
-    console.log(
-      ` ${reg}: n=${t.trades} WR=${wr}% PF=${pf} net=${t.netProfit.toFixed(2)} ` +
-      `avgBars=${t.avgBarsHeld} | ${reasons || '—'}`
-    );
+      console.log(
+        ` ${reg}: n=${t.trades} WR=${wr}% PF=${pf} net=${t.netProfit.toFixed(2)} avgBars=${t.avgBarsHeld} | ${reasons || '—'}`
+      );
+    }
   }
 
   const allReasons = Object.entries(rs.closeReasonsAll)
@@ -287,6 +283,25 @@ function printTrades(result: RunResult, limit?: number): void {
   }
 }
 
+function printOpenPosition(result: RunResult): void {
+  if (!result.openPosition) return;
+
+  const p = result.openPosition;
+  console.log('\n========== ОТКРЫТАЯ ПОЗИЦИЯ ==========');
+  console.log(`Сторона: ${p.side}`);
+  console.log(`Режим: ${p.regime}`);
+  console.log(`Открыта: ${formatDate(p.openedAt)}`);
+  console.log(`Вход: ${formatNumber(p.entryPrice, 4)}`);
+  console.log(`Последняя цена: ${formatNumber(p.lastPrice, 4)}`);
+  console.log(`SL: ${formatNumber(p.stopLossPrice, 4)}`);
+  console.log(`TP: ${formatNumber(p.takeProfitPrice, 4)}`);
+  console.log(`Qty: ${formatNumber(p.quantity, 6)}`);
+  console.log(`Notional: ${formatNumber(p.positionSize, 2)}`);
+  console.log(`Unrealized gross: ${formatNumber(p.unrealizedGrossPnl, 2)}`);
+  console.log(`Unrealized net: ${formatNumber(p.unrealizedNetPnl, 2)}`);
+  console.log(`Bars: ${p.barsHeld}`);
+}
+
 function printUsage(): void {
   console.log(`
 Использование:
@@ -294,10 +309,14 @@ npx tsx src/backtest/runBacktest.ts [DATA_FILE] [SYMBOL] [cooldown] [both|long|s
 
 Примеры:
 npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT
-npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 12
-npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 12 both
-npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 12 short
-npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 12 long
+npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 0
+npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 0 both
+npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 0 short
+npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 0 long
+
+ENV:
+BACKTEST_TRADE_START_AT=2026-07-16T00:00:00Z
+BACKTEST_WARMUP=0
 `);
 }
 
@@ -318,6 +337,19 @@ function main(): void {
     process.exit(1);
   }
 
+  const tradeStartAt = process.env.BACKTEST_TRADE_START_AT
+    ? Date.parse(process.env.BACKTEST_TRADE_START_AT)
+    : NaN;
+
+  const warmupFromEnv = process.env.BACKTEST_WARMUP
+    ? Number(process.env.BACKTEST_WARMUP)
+    : DEFAULT_WARMUP;
+
+  const warmup =
+    Number.isInteger(warmupFromEnv) && warmupFromEnv >= 0
+      ? warmupFromEnv
+      : DEFAULT_WARMUP;
+
   let rawJson: unknown;
   try {
     rawJson = JSON.parse(fs.readFileSync(absolutePath, 'utf-8'));
@@ -336,11 +368,10 @@ function main(): void {
   }
 
   if (candles.length < 300) {
-    console.warn(`Мало свечей: ${candles.length}.`);
+    console.warn(`Мало свечей: ${candles.length}. Для parity с live лучше больше истории.`);
   }
 
   const estimated = estimateBacktestTime(candles.length);
-  const warmup = 250;
 
   console.log('\n========== ПАРАМЕТРЫ ЗАПУСКА ==========');
   console.log(`Файл: ${absolutePath}`);
@@ -353,7 +384,7 @@ function main(): void {
   );
   console.log(`Стартовый баланс: ${STARTING_BALANCE}`);
   console.log(`Комиссия: ${COMMISSION_RATE * 100}%`);
-  console.log(`Cooldown после сделки: ${cooldownCandles} свеч. (после любой)`);
+  console.log(`Cooldown после сделки: ${cooldownCandles} свеч. (live parity default)`);
   console.log(`Side filter: ${sideFilter}`);
   console.log(
     `Оценка времени: ~ ${formatDuration(estimated.minSec)} - ${formatDuration(
@@ -363,12 +394,20 @@ function main(): void {
   console.log(`Лог прогресса: каждые ${PROGRESS_LOG_EVERY} свечей`);
   console.log(`One position at time: ${ONE_POSITION_AT_TIME ? 'ON' : 'OFF'}`);
   console.log(`Conservative intrabar: ${CONSERVATIVE_INTRABAR ? 'ON' : 'OFF'}`);
-  console.log(`Time-stop: ${TIME_STOP_BARS} бар`);
+  console.log(`Time-stop: ${TIME_STOP_BARS > 0 ? `${TIME_STOP_BARS} бар` : 'OFF'}`);
   console.log(
-    `Early-abort: ${EARLY_ABORT_BARS > 0 ? `${EARLY_ABORT_BARS} бар @ ${EARLY_ABORT_MIN_R}R` : 'OFF'}`
+    `Early-abort: ${
+      EARLY_ABORT_BARS > 0 ? `${EARLY_ABORT_BARS} бар @ ${EARLY_ABORT_MIN_R}R` : 'OFF'
+    }`
   );
   console.log(`Лимит входов в день: ${MAX_TRADES_PER_DAY > 0 ? MAX_TRADES_PER_DAY : 'выкл.'}`);
   console.log(`Warmup: ${warmup} бар`);
+  console.log(
+    `Trade start: ${
+      Number.isFinite(tradeStartAt) ? new Date(tradeStartAt).toISOString() : 'с начала файла'
+    }`
+  );
+  console.log(`Close open position on end: ${CLOSE_OPEN_POSITION_ON_END ? 'ON' : 'OFF'}`);
 
   const startedAt = Date.now();
   const heartbeat = setInterval(() => {
@@ -379,7 +418,8 @@ function main(): void {
     );
   }, 15000);
 
-  let result: RunResult;
+  let result: RunResult | undefined;
+
   try {
     console.log(`Прогресс: 0/${candles.length} свечей`);
 
@@ -395,7 +435,9 @@ function main(): void {
       timeStopBars: TIME_STOP_BARS,
       earlyAbortBars: EARLY_ABORT_BARS,
       earlyAbortMinR: EARLY_ABORT_MIN_R,
-      sideFilter
+      sideFilter,
+      tradeStartTime: Number.isFinite(tradeStartAt) ? tradeStartAt : 0,
+      closeOpenPositionOnEnd: CLOSE_OPEN_POSITION_ON_END
     });
   } finally {
     clearInterval(heartbeat);
@@ -404,9 +446,15 @@ function main(): void {
   console.log('\n========== ВРЕМЯ ВЫПОЛНЕНИЯ ==========');
   console.log(`Фактическое время: ${formatDuration((Date.now() - startedAt) / 1000)}`);
 
+  if (!result) {
+    console.error('Бэктест не завершился корректно.');
+    process.exit(1);
+  }
+
   printSummary(result);
   printRegimeStats(result);
   printTrades(result);
+  printOpenPosition(result);
 }
 
 main();
