@@ -4,7 +4,6 @@ git clone https://github.com/mybox1407-art/trade_bot_crypto_impulse.git
 cd trade_bot_crypto_impulse
 docker compose up -d --build
 docker network connect n8n-docker_default trade_bot_crypto_impulse
-npm install
 
 npx tsx src/backtest/downloadCandles.ts SOLUSDT 30 15m
 
