@@ -9,8 +9,6 @@ const BB_SQUEEZE_THRESHOLD = 0.05;
 // breakout_watch filters
 const BREAKOUT_ATR_BUFFER_K = 0.2;
 const BREAKOUT_BODY_ATR_MIN = 0.5;
-const BREAKOUT_MAX_WICK_BODY_RATIO = 1.0;
-const BREAKOUT_CONFIRM_CLOSE_FRACTION = 0.6;
 
 export interface Candle {
   time: number;
@@ -189,30 +187,16 @@ export function analyzeMarket(candles: Candle[]) {
     const candleBody = Math.abs(lastCandle.close - lastCandle.open);
     const atrBuffer = lastAtr * BREAKOUT_ATR_BUFFER_K;
     const minBody = lastAtr * BREAKOUT_BODY_ATR_MIN;
-    const candleRange = Math.max(lastCandle.high - lastCandle.low, 1e-9);
-
-    const upperWick = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
-    const lowerWick = Math.min(lastCandle.open, lastCandle.close) - lastCandle.low;
-
-    const closeInUpperPart = (lastCandle.close - lastCandle.low) / candleRange >= BREAKOUT_CONFIRM_CLOSE_FRACTION;
-    const closeInLowerPart = (lastCandle.high - lastCandle.close) / candleRange >= BREAKOUT_CONFIRM_CLOSE_FRACTION;
-
-    const longWickOk = upperWick <= candleBody * BREAKOUT_MAX_WICK_BODY_RATIO;
-    const shortWickOk = lowerWick <= candleBody * BREAKOUT_MAX_WICK_BODY_RATIO;
 
     const breakoutUp =
       price > lastBb.upper + atrBuffer &&
       candleBody >= minBody &&
-      lastRsi > 55 &&
-      closeInUpperPart &&
-      longWickOk;
+      lastRsi > 55;
 
     const breakoutDown =
       price < lastBb.lower - atrBuffer &&
       candleBody >= minBody &&
-      lastRsi < 45 &&
-      closeInLowerPart &&
-      shortWickOk;
+      lastRsi < 45;
 
     if (breakoutUp) {
       side = 'long';
@@ -261,8 +245,6 @@ export function analyzeMarket(candles: Candle[]) {
       regimeIndicators,
       breakoutAtrBufferK: BREAKOUT_ATR_BUFFER_K,
       breakoutBodyAtrMin: BREAKOUT_BODY_ATR_MIN,
-      breakoutMaxWickBodyRatio: BREAKOUT_MAX_WICK_BODY_RATIO,
-      breakoutConfirmCloseFraction: BREAKOUT_CONFIRM_CLOSE_FRACTION,
       ready: true
     }
   };
