@@ -1,4 +1,3 @@
-//пока это основа
 import { MACD, RSI, ATR, ADX, BollingerBands, EMA } from 'technicalindicators';
 
 const STARTING_BALANCE = 500;
@@ -93,7 +92,7 @@ export function detectMarketRegime(candles: Candle[]) {
   const breakoutWatch = compression && lastAdx.adx >= 15 && lastAdx.adx <= 28 && getVolumeSpike(volumes, avgVol20);
   const highVolatility = atrPct > 0.025 || bbWidth > 0.12;
 
-  let regime: MarketRegime = 'range';
+  let regime: MarketRegime = 'unknown';
   if (highVolatility) regime = 'high_volatility';
   else if (strongTrendUp) regime = 'trend_up';
   else if (strongTrendDown) regime = 'trend_down';
@@ -177,22 +176,6 @@ export function analyzeMarket(candles: Candle[]) {
     sell = true;
     stopLossPrice = price + lastAtr * 1.4;
     takeProfitPrice = price - lastAtr * 2.8;
-  }
-
-  if (regime === 'range') {
-    const longSetup = price <= lastBb.lower && lastRsi <= 30;
-    const shortSetup = price >= lastBb.upper && lastRsi >= 70;
-    if (longSetup) {
-      side = 'long';
-      buy = true;
-      stopLossPrice = price - lastAtr * 1.2;
-      takeProfitPrice = lastBb.middle;
-    } else if (shortSetup) {
-      side = 'short';
-      sell = true;
-      stopLossPrice = price + lastAtr * 1.2;
-      takeProfitPrice = lastBb.middle;
-    }
   }
 
   if (regime === 'breakout_watch') {
