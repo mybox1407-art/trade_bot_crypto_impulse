@@ -1,7 +1,7 @@
 services:
   trade_bot:
     build: .
-    container_name: trade_bot
+    container_name:  trade_bot_crypto_impulse
     restart: unless-stopped
     ports:
       - "3001:3001"
