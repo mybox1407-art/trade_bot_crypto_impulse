@@ -5,6 +5,7 @@ const MAX_RISK_PER_TRADE = 0.01;
 const MIN_ADX_TREND = 20;
 const MIN_ADX_RANGE = 18;
 const BB_SQUEEZE_THRESHOLD = 0.05;
+const BREAKOUT_BODY_ATR_MIN = 0.5;
 
 export interface Candle {
   time: number;
@@ -179,8 +180,10 @@ export function analyzeMarket(candles: Candle[]) {
   }
 
   if (regime === 'breakout_watch') {
-    const breakoutUp = price > lastBb.upper && lastRsi > 55;
-    const breakoutDown = price < lastBb.lower && lastRsi < 45;
+    const bodySize = Math.abs(price - closes[closes.length - 2]);
+    const breakoutBodyOk = bodySize >= lastAtr * BREAKOUT_BODY_ATR_MIN;
+    const breakoutUp = price > lastBb.upper && lastRsi > 55 && breakoutBodyOk;
+    const breakoutDown = price < lastBb.lower && lastRsi < 45 && breakoutBodyOk;
     if (breakoutUp) {
       side = 'long';
       buy = true;
