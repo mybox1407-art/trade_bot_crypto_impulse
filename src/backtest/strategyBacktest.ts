@@ -520,18 +520,46 @@ function tryOpenPosition(params: {
   if (sideFilter === 'short' && signal.side !== 'short') return null;
 
   if (
+    signal.price == null ||
     signal.stopLossPrice == null ||
     signal.takeProfitPrice == null ||
+    !Number.isFinite(signal.price) ||
     !Number.isFinite(signal.stopLossPrice) ||
     !Number.isFinite(signal.takeProfitPrice)
   ) {
     return null;
   }
 
+  const signalPrice = toNumber(signal.price);
+  const signalStop = toNumber(signal.stopLossPrice);
+  const signalTp = toNumber(signal.takeProfitPrice);
+
   const entryPrice = entryCandle1m?.open ?? fallbackEntryPrice;
   const openedAt = entryCandle1m?.time ?? fallbackEntryTime;
 
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return null;
+
+  const stopDistance = Math.abs(signalPrice - signalStop);
+  const tpDistance = Math.abs(signalTp - signalPrice);
+
+  if (!Number.isFinite(stopDistance) || stopDistance <= 0) return null;
+  if (!Number.isFinite(tpDistance) || tpDistance <= 0) return null;
+
+  const stopLossPrice =
+    signal.side === 'long'
+      ? entryPrice - stopDistance
+      : entryPrice + stopDistance;
+
+  const takeProfitPrice =
+    signal.side === 'long'
+      ? entryPrice + tpDistance
+      : entryPrice - tpDistance;
+
+  if (signal.side === 'long') {
+    if (!(stopLossPrice < entryPrice && takeProfitPrice > entryPrice)) return null;
+  } else {
+    if (!(stopLossPrice > entryPrice && takeProfitPrice < entryPrice)) return null;
+  }
 
   const rawNotional = currentBalance * positionPercent;
   const maxAffordableNotional =
@@ -551,8 +579,8 @@ function tryOpenPosition(params: {
     entryPrice,
     quantity,
     notional,
-    takeProfitPrice: toNumber(signal.takeProfitPrice),
-    stopLossPrice: toNumber(signal.stopLossPrice),
+    takeProfitPrice,
+    stopLossPrice,
     balanceBefore: currentBalance
   };
 }
@@ -623,7 +651,6 @@ export function runStrategyBacktest(
     const next15mTime =
       i + 1 < sorted15m.length ? sorted15m[i + 1].time : Number.POSITIVE_INFINITY;
 
-    // ВАЖНО: сигнал считаем на текущей 15m-свече, а не на предыдущей
     const signalCandles15m = sorted15m.slice(0, i + 1);
 
     const regInfo = detectMarketRegime(signalCandles15m);
