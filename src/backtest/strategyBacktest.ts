@@ -615,12 +615,16 @@ export function runStrategyBacktest(
   );
   const totalBarsToProcess = Math.max(sorted15m.length - startIndex, 0);
 
-  let minuteIndex = sorted1m.length > 0 ? lowerBoundCandles(sorted1m, sorted15m[startIndex].time) : 0;
+  let minuteIndex =
+    sorted1m.length > 0 ? lowerBoundCandles(sorted1m, sorted15m[startIndex].time) : 0;
 
   for (let i = startIndex; i < sorted15m.length; i++) {
     const current15m = sorted15m[i];
-    const next15mTime = i + 1 < sorted15m.length ? sorted15m[i + 1].time : Number.POSITIVE_INFINITY;
-    const signalCandles15m = sorted15m.slice(0, i);
+    const next15mTime =
+      i + 1 < sorted15m.length ? sorted15m[i + 1].time : Number.POSITIVE_INFINITY;
+
+    // ВАЖНО: сигнал считаем на текущей 15m-свече, а не на предыдущей
+    const signalCandles15m = sorted15m.slice(0, i + 1);
 
     const regInfo = detectMarketRegime(signalCandles15m);
     const regName = regInfo.ready ? regInfo.regime : 'unknown';
