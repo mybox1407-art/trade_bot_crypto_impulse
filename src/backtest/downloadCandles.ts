@@ -6,9 +6,9 @@ import axios from 'axios';
  * Скачивание исторических свечей с Binance Spot
  *
  * Запуск:
- *   npx tsx src/backtest/download-binance-candles.ts SOLUSDT 30 15m
- *   npx tsx src/backtest/download-binance-candles.ts BTCUSDT 90 1h
- *   npx tsx src/backtest/download-binance-candles.ts ETHUSDT 7 1m
+ *   npx tsx src/backtest/downloadCandles.ts SOLUSDT 30 15m
+ *   npx tsx src/backtest/downloadCandles.ts BTCUSDT 90 1h
+ *   npx tsx src/backtest/downloadCandles.ts ETHUSDT 7 1m
  *
  * Args: <symbol> [days=21] [interval=15m]
  * Symbol: SOLUSDT / SOL/USDT / solusdt — всё ок
@@ -29,20 +29,19 @@ type Candle = {
   volume: number;
 };
 
-/** [openTime, open, high, low, close, volume, closeTime, ...] */
 type BinanceKline = [
-  number,   // 0 open time ms
-  string,   // 1 open
-  string,   // 2 high
-  string,   // 3 low
-  string,   // 4 close
-  string,   // 5 volume
-  number,   // 6 close time
-  string,   // 7 quote volume
-  number,   // 8 trades
-  string,   // 9 taker buy base
-  string,   // 10 taker buy quote
-  string    // 11 ignore
+  number,
+  string,
+  string,
+  string,
+  string,
+  string,
+  number,
+  string,
+  number,
+  string,
+  string,
+  string
 ];
 
 const VALID_INTERVALS = new Set<string>([
@@ -51,14 +50,13 @@ const VALID_INTERVALS = new Set<string>([
   '1d', '3d', '1w', '1M'
 ]);
 
-// Основной + fallback (если api.binance.com geo-block / 451)
 const BASE_URLS = [
   'https://api.binance.com',
   'https://data-api.binance.vision',
-  'https://api1.binance.com',
+  'https://api1.binance.com'
 ];
 
-const LIMIT = 1000; // max per request
+const LIMIT = 1000;
 const REQUEST_PAUSE_MS = 250;
 
 function normalizeSymbol(raw: string): string {
@@ -81,8 +79,9 @@ function intervalToMs(interval: BinanceInterval): number {
     '1d': 86_400_000,
     '3d': 259_200_000,
     '1w': 604_800_000,
-    '1M': 2_592_000_000, // ~30d approx
+    '1M': 2_592_000_000
   };
+
   return map[interval];
 }
 
@@ -101,7 +100,7 @@ function klineToCandle(k: BinanceKline): Candle {
     high: Number(k[2]),
     low: Number(k[3]),
     close: Number(k[4]),
-    volume: Number(k[5]),
+    volume: Number(k[5])
   };
 }
 
@@ -121,9 +120,9 @@ async function fetchKlinesPage(params: {
       interval,
       startTime,
       endTime,
-      limit: LIMIT,
+      limit: LIMIT
     },
-    timeout: 30_000,
+    timeout: 30_000
   });
 
   return response.data ?? [];
@@ -140,16 +139,22 @@ async function fetchKlinesWithFallback(params: {
   for (const baseUrl of BASE_URLS) {
     try {
       return await fetchKlinesPage({ ...params, baseUrl });
-    } catch (err) {
+    } catch (err: unknown) {
       lastError = err;
+
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
-        // geo / ban / 5xx → пробуем следующий host
-        if (status === 451 || status === 403 || status === 418 || (status && status >= 500)) {
-          console.warn(`  host ${baseUrl} → HTTP ${status}, fallback...`);
+
+        if (
+          status === 451 ||
+          status === 403 ||
+          status === 418 ||
+          (status != null && status >= 500)
+        ) {
+          console.warn(`  host ${baseUrl} -> HTTP ${status}, fallback...`);
           continue;
         }
-        // 429 — ждём и ретраим тот же host
+
         if (status === 429) {
           const retryAfter = Number(err.response?.headers?.['retry-after'] ?? 5);
           console.warn(`  rate limit 429, sleep ${retryAfter}s...`);
@@ -157,6 +162,7 @@ async function fetchKlinesWithFallback(params: {
           return fetchKlinesPage({ ...params, baseUrl });
         }
       }
+
       throw err;
     }
   }
@@ -189,11 +195,10 @@ async function downloadAllCandles(params: {
       symbol,
       interval,
       startTime: cursor,
-      endTime: pageEnd,
+      endTime: pageEnd
     });
 
     if (raw.length === 0) {
-      // пусто — сдвигаемся вперёд, чтобы не зациклиться
       cursor = pageEnd;
       await sleep(REQUEST_PAUSE_MS);
       continue;
@@ -215,18 +220,15 @@ async function downloadAllCandles(params: {
 
     all.push(...candles);
 
-    // следующий cursor = openTime последней свечи + 1ms
     const lastOpen = raw[raw.length - 1][0];
     const next = lastOpen + 1;
 
     if (next <= cursor) {
-      // защита от бесконечного цикла
       cursor = pageEnd;
     } else {
       cursor = next;
     }
 
-    // если вернули меньше limit — дальше данных в этом окне нет
     if (raw.length < LIMIT && cursor < pageEnd) {
       cursor = pageEnd;
     }
@@ -234,10 +236,9 @@ async function downloadAllCandles(params: {
     await sleep(REQUEST_PAUSE_MS);
   }
 
-  // dedupe + sort
-  const deduped = Array.from(new Map(all.map(c => [c.time, c])).values()).sort(
-    (a, b) => a.time - b.time
-  );
+  const deduped = Array.from(
+    new Map(all.map(c => [c.time, c])).values()
+  ).sort((a, b) => a.time - b.time);
 
   return deduped;
 }
@@ -247,8 +248,8 @@ async function main() {
 
   if (!symbolArg) {
     console.error('Не указан symbol.');
-    console.error('Пример: npx tsx src/backtest/download-binance-candles.ts SOLUSDT 30 15m');
-    console.error('        npx tsx src/backtest/download-binance-candles.ts BTC/USDT 90 1h');
+    console.error('Пример: npx tsx src/backtest/downloadCandles.ts SOLUSDT 30 15m');
+    console.error('        npx tsx src/backtest/downloadCandles.ts BTC/USDT 90 1h');
     process.exit(1);
   }
 
@@ -278,26 +279,27 @@ async function main() {
     symbol,
     interval,
     fromMs,
-    toMs,
+    toMs
   });
 
   const outputDir = path.resolve(process.cwd(), 'src/backtest/data');
   ensureDir(outputDir);
 
-  // имя файла как у T-Bank: SYMBOL_15m.json
   const outputFile = path.join(outputDir, `${symbol}_${interval}.json`);
   fs.writeFileSync(outputFile, JSON.stringify(candles, null, 2), 'utf-8');
 
   console.log(`Готово. Сохранено свечей: ${candles.length}`);
   if (candles.length > 0) {
     console.log(
-      `Диапазон: ${new Date(candles[0].time).toISOString()} -> ${new Date(candles[candles.length - 1].time).toISOString()}`
+      `Диапазон: ${new Date(candles[0].time).toISOString()} -> ${new Date(
+        candles[candles.length - 1].time
+      ).toISOString()}`
     );
   }
   console.log(`Файл: ${outputFile}`);
 }
 
-main().catch(error => {
+main().catch((error: unknown) => {
   console.error('Ошибка загрузки свечей Binance');
 
   if (axios.isAxiosError(error)) {
@@ -310,6 +312,8 @@ main().catch(error => {
     } else {
       console.error('response: отсутствует');
     }
+  } else if (error instanceof Error) {
+    console.error('message:', error.message);
   } else {
     console.error(error);
   }
