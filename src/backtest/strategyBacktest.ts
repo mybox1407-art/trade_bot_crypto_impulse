@@ -11,14 +11,12 @@ export interface BacktestOptions {
   startingBalance?: number;
   positionPercent?: number;
   commissionRate?: number;
-  warmupCandles?: number;
+  warmupCandles15m?: number;
   progressLogEvery?: number;
   sideFilter?: SideFilter;
   tradeStartTime?: number;
-  onePositionAtTime?: boolean;
   conservativeIntrabarExecution?: boolean;
   closeOpenPositionOnEnd?: boolean;
-  closeCheckIntervalSec?: number;
 }
 
 interface OpenPosition {
@@ -346,6 +344,19 @@ function snapshotOpenPosition(params: {
   };
 }
 
+function lowerBoundCandles(candles: Candle[], targetTime: number): number {
+  let left = 0;
+  let right = candles.length;
+
+  while (left < right) {
+    const mid = Math.floor((left + right) / 2);
+    if (candles[mid].time < targetTime) left = mid + 1;
+    else right = mid;
+  }
+
+  return left;
+}
+
 function buildTrade(params: {
   position: OpenPosition;
   exitPrice: number;
@@ -402,21 +413,9 @@ function buildTrade(params: {
   };
 }
 
-function interpolatePrice(
-  candle: Candle,
-  stepIndex: number,
-  totalSteps: number
-): number {
-  const t = totalSteps <= 1 ? 1 : stepIndex / (totalSteps - 1);
-  return candle.open + (candle.close - candle.open) * t;
-}
-
-function checkCloseAtSyntheticStep(params: {
+function processExitOn1mCandle(params: {
   position: OpenPosition;
   candle: Candle;
-  stepTime: number;
-  stepIndex: number;
-  stepsInCandle: number;
   balance: number;
   commissionRate: number;
   barsHeld: number;
@@ -426,96 +425,76 @@ function checkCloseAtSyntheticStep(params: {
   balance: number;
   stillOpen: boolean;
 } {
-  const {
-    position,
-    candle,
-    stepTime,
-    stepIndex,
-    stepsInCandle,
-    balance,
-    commissionRate,
-    barsHeld,
-    conservative
-  } = params;
+  const { position, candle, commissionRate, barsHeld, conservative } = params;
+  let { balance } = params;
 
-  const syntheticPrice = interpolatePrice(candle, stepIndex, stepsInCandle);
-
-  const touchedStop =
+  const hitStop =
     position.side === 'long'
       ? candle.low <= position.stopLossPrice
       : candle.high >= position.stopLossPrice;
 
-  const touchedTp =
+  const hitTp =
     position.side === 'long'
       ? candle.high >= position.takeProfitPrice
       : candle.low <= position.takeProfitPrice;
 
-  if (!touchedStop && !touchedTp) {
-    return { trade: null, balance, stillOpen: true };
-  }
-
-  if (touchedStop && touchedTp) {
+  if (hitStop && hitTp) {
     const exitPrice = conservative ? position.stopLossPrice : position.takeProfitPrice;
     const closeReason = conservative ? 'stop_loss' : 'take_profit';
 
     const trade = buildTrade({
       position,
       exitPrice,
-      closedAt: stepTime,
+      closedAt: candle.time,
       closeReason,
       balanceBeforeClose: balance,
       commissionRate,
       barsHeld
     });
 
-    return { trade, balance: trade.balanceAfter, stillOpen: false };
+    balance = trade.balanceAfter;
+    return { trade, balance, stillOpen: false };
   }
 
-  if (touchedStop) {
-    const shouldFireNow =
-      position.side === 'long'
-        ? syntheticPrice <= position.stopLossPrice || candle.low <= position.stopLossPrice
-        : syntheticPrice >= position.stopLossPrice || candle.high >= position.stopLossPrice;
-
-    if (!shouldFireNow) return { trade: null, balance, stillOpen: true };
-
+  if (hitStop) {
     const trade = buildTrade({
       position,
       exitPrice: position.stopLossPrice,
-      closedAt: stepTime,
+      closedAt: candle.time,
       closeReason: 'stop_loss',
       balanceBeforeClose: balance,
       commissionRate,
       barsHeld
     });
 
-    return { trade, balance: trade.balanceAfter, stillOpen: false };
+    balance = trade.balanceAfter;
+    return { trade, balance, stillOpen: false };
   }
 
-  const shouldFireNow =
-    position.side === 'long'
-      ? syntheticPrice >= position.takeProfitPrice || candle.high >= position.takeProfitPrice
-      : syntheticPrice <= position.takeProfitPrice || candle.low <= position.takeProfitPrice;
+  if (hitTp) {
+    const trade = buildTrade({
+      position,
+      exitPrice: position.takeProfitPrice,
+      closedAt: candle.time,
+      closeReason: 'take_profit',
+      balanceBeforeClose: balance,
+      commissionRate,
+      barsHeld
+    });
 
-  if (!shouldFireNow) return { trade: null, balance, stillOpen: true };
+    balance = trade.balanceAfter;
+    return { trade, balance, stillOpen: false };
+  }
 
-  const trade = buildTrade({
-    position,
-    exitPrice: position.takeProfitPrice,
-    closedAt: stepTime,
-    closeReason: 'take_profit',
-    balanceBeforeClose: balance,
-    commissionRate,
-    barsHeld
-  });
-
-  return { trade, balance: trade.balanceAfter, stillOpen: false };
+  return { trade: null, balance, stillOpen: true };
 }
 
 function tryOpenPosition(params: {
   symbol: string;
-  signalCandles: Candle[];
-  executionCandle: Candle;
+  signalCandles15m: Candle[];
+  entryCandle1m: Candle | null;
+  fallbackEntryTime: number;
+  fallbackEntryPrice: number;
   currentBalance: number;
   positionPercent: number;
   commissionRate: number;
@@ -523,20 +502,22 @@ function tryOpenPosition(params: {
 }): OpenPosition | null {
   const {
     symbol,
-    signalCandles,
-    executionCandle,
+    signalCandles15m,
+    entryCandle1m,
+    fallbackEntryTime,
+    fallbackEntryPrice,
     currentBalance,
     positionPercent,
     commissionRate,
     sideFilter
   } = params;
 
-  const signal = analyzeMarket(signalCandles);
+  const signal = analyzeMarket(signalCandles15m);
 
   if (signal.side === 'none') return null;
+  if (!signal.buy && !signal.sell) return null;
   if (sideFilter === 'long' && signal.side !== 'long') return null;
   if (sideFilter === 'short' && signal.side !== 'short') return null;
-  if (!signal.buy && !signal.sell) return null;
 
   if (
     signal.stopLossPrice == null ||
@@ -547,7 +528,9 @@ function tryOpenPosition(params: {
     return null;
   }
 
-  const entryPrice = executionCandle.open;
+  const entryPrice = entryCandle1m?.open ?? fallbackEntryPrice;
+  const openedAt = entryCandle1m?.time ?? fallbackEntryTime;
+
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return null;
 
   const rawNotional = currentBalance * positionPercent;
@@ -564,7 +547,7 @@ function tryOpenPosition(params: {
     symbol,
     side: signal.side,
     regime: signal.regime,
-    openedAt: executionCandle.time,
+    openedAt,
     entryPrice,
     quantity,
     notional,
@@ -576,24 +559,23 @@ function tryOpenPosition(params: {
 
 export function runStrategyBacktest(
   symbol: string,
-  candles: Candle[],
+  candles15m: Candle[],
+  candles1m: Candle[],
   options: BacktestOptions = {}
 ): BacktestResult {
   const resolvedOptions: Required<BacktestOptions> = {
     startingBalance: options.startingBalance ?? 500,
     positionPercent: options.positionPercent ?? 0.1,
     commissionRate: options.commissionRate ?? 0,
-    warmupCandles: options.warmupCandles ?? 0,
+    warmupCandles15m: options.warmupCandles15m ?? 0,
     progressLogEvery: options.progressLogEvery ?? 250,
     sideFilter: options.sideFilter ?? 'both',
     tradeStartTime: options.tradeStartTime ?? 0,
-    onePositionAtTime: options.onePositionAtTime ?? true,
     conservativeIntrabarExecution: options.conservativeIntrabarExecution ?? true,
-    closeOpenPositionOnEnd: options.closeOpenPositionOnEnd ?? false,
-    closeCheckIntervalSec: options.closeCheckIntervalSec ?? 15
+    closeOpenPositionOnEnd: options.closeOpenPositionOnEnd ?? false
   };
 
-  if (!Array.isArray(candles) || candles.length === 0) {
+  if (!Array.isArray(candles15m) || candles15m.length === 0) {
     return {
       symbol,
       options: resolvedOptions,
@@ -611,33 +593,36 @@ export function runStrategyBacktest(
     };
   }
 
-  const sortedCandles = [...candles].sort((a, b) => a.time - b.time);
-  const candleMs =
-    sortedCandles.length >= 2
-      ? Math.max(1, sortedCandles[1].time - sortedCandles[0].time)
-      : 15 * 60 * 1000;
-  const closeStepMs = resolvedOptions.closeCheckIntervalSec * 1000;
-  const stepsPerCandle = Math.max(1, Math.floor(candleMs / closeStepMs));
+  const sorted15m = [...candles15m].sort((a, b) => a.time - b.time);
+  const sorted1m = [...candles1m].sort((a, b) => a.time - b.time);
+
+  const tf15mMs =
+    sorted15m.length >= 2 ? Math.max(1, sorted15m[1].time - sorted15m[0].time) : 15 * 60 * 1000;
 
   let balance = resolvedOptions.startingBalance;
   let openPosition: OpenPosition | null = null;
-  let openPositionIndex = -1;
 
   const trades: BacktestTrade[] = [];
   const equityCurve: Array<{ time: number; balance: number }> = [
-    { time: sortedCandles[0].time, balance: round(balance) }
+    { time: sorted15m[0].time, balance: round(balance) }
   ];
   const barCounts: Record<string, number> = {};
 
   const startedAt = Date.now();
-  const startIndex = Math.max(1, Math.min(resolvedOptions.warmupCandles, sortedCandles.length - 1));
-  const totalBarsToProcess = Math.max(sortedCandles.length - startIndex, 0);
+  const startIndex = Math.max(
+    1,
+    Math.min(resolvedOptions.warmupCandles15m, sorted15m.length - 1)
+  );
+  const totalBarsToProcess = Math.max(sorted15m.length - startIndex, 0);
 
-  for (let i = startIndex; i < sortedCandles.length; i++) {
-    const currentCandle = sortedCandles[i];
-    const signalCandles = sortedCandles.slice(0, i);
+  let minuteIndex = sorted1m.length > 0 ? lowerBoundCandles(sorted1m, sorted15m[startIndex].time) : 0;
 
-    const regInfo = detectMarketRegime(signalCandles);
+  for (let i = startIndex; i < sorted15m.length; i++) {
+    const current15m = sorted15m[i];
+    const next15mTime = i + 1 < sorted15m.length ? sorted15m[i + 1].time : Number.POSITIVE_INFINITY;
+    const signalCandles15m = sorted15m.slice(0, i);
+
+    const regInfo = detectMarketRegime(signalCandles15m);
     const regName = regInfo.ready ? regInfo.regime : 'unknown';
     barCounts[regName] = (barCounts[regName] ?? 0) + 1;
 
@@ -645,7 +630,7 @@ export function runStrategyBacktest(
       const processedBars = i - startIndex;
       const shouldLog =
         processedBars > 0 &&
-        (processedBars % resolvedOptions.progressLogEvery === 0 || i === sortedCandles.length - 1);
+        (processedBars % resolvedOptions.progressLogEvery === 0 || i === sorted15m.length - 1);
 
       if (shouldLog) {
         const elapsedSec = (Date.now() - startedAt) / 1000;
@@ -670,11 +655,22 @@ export function runStrategyBacktest(
       }
     }
 
-    if (!openPosition && currentCandle.time >= resolvedOptions.tradeStartTime) {
+    while (minuteIndex < sorted1m.length && sorted1m[minuteIndex].time < current15m.time) {
+      minuteIndex += 1;
+    }
+
+    const first1mInWindow =
+      minuteIndex < sorted1m.length && sorted1m[minuteIndex].time < next15mTime
+        ? sorted1m[minuteIndex]
+        : null;
+
+    if (!openPosition && current15m.time >= resolvedOptions.tradeStartTime) {
       const maybeOpen = tryOpenPosition({
         symbol,
-        signalCandles,
-        executionCandle: currentCandle,
+        signalCandles15m,
+        entryCandle1m: first1mInWindow,
+        fallbackEntryTime: current15m.time,
+        fallbackEntryPrice: current15m.open,
         currentBalance: balance,
         positionPercent: resolvedOptions.positionPercent,
         commissionRate: resolvedOptions.commissionRate,
@@ -683,23 +679,25 @@ export function runStrategyBacktest(
 
       if (maybeOpen) {
         openPosition = maybeOpen;
-        openPositionIndex = i;
       }
     }
 
-    if (openPosition) {
-      for (let step = 0; step < stepsPerCandle; step++) {
-        const stepTime = currentCandle.time + step * closeStepMs;
+    let scanIndex = minuteIndex;
 
-        const result = checkCloseAtSyntheticStep({
+    while (scanIndex < sorted1m.length && sorted1m[scanIndex].time < next15mTime) {
+      if (openPosition) {
+        const minuteCandle = sorted1m[scanIndex];
+        const barsHeld = Math.max(
+          0,
+          Math.floor((minuteCandle.time - openPosition.openedAt) / tf15mMs)
+        );
+
+        const result = processExitOn1mCandle({
           position: openPosition,
-          candle: currentCandle,
-          stepTime,
-          stepIndex: step,
-          stepsInCandle: stepsPerCandle,
+          candle: minuteCandle,
           balance,
           commissionRate: resolvedOptions.commissionRate,
-          barsHeld: Math.max(i - openPositionIndex, 0),
+          barsHeld,
           conservative: resolvedOptions.conservativeIntrabarExecution
         });
 
@@ -709,40 +707,45 @@ export function runStrategyBacktest(
           trades.push(result.trade);
           equityCurve.push({ time: result.trade.closedAt, balance: round(balance) });
           openPosition = null;
-          openPositionIndex = -1;
+          scanIndex += 1;
           break;
         }
       }
+
+      scanIndex += 1;
     }
 
-    if (openPosition && resolvedOptions.onePositionAtTime) {
-      continue;
-    }
+    minuteIndex = scanIndex;
   }
 
   let openPositionSnapshot: OpenPositionSnapshot | null = null;
 
   if (openPosition) {
-    const lastCandle = sortedCandles[sortedCandles.length - 1];
+    const last1m = sorted1m.length ? sorted1m[sorted1m.length - 1] : null;
+    const last15m = sorted15m[sorted15m.length - 1];
+    const lastPrice = last1m?.close ?? last15m.close;
+    const lastTime = last1m?.time ?? last15m.time;
 
     if (resolvedOptions.closeOpenPositionOnEnd) {
+      const barsHeld = Math.max(0, Math.floor((lastTime - openPosition.openedAt) / tf15mMs));
+
       const trade = buildTrade({
         position: openPosition,
-        exitPrice: lastCandle.close,
-        closedAt: lastCandle.time,
+        exitPrice: lastPrice,
+        closedAt: lastTime,
         closeReason: 'forced_close',
         balanceBeforeClose: balance,
         commissionRate: resolvedOptions.commissionRate,
-        barsHeld: sortedCandles.length - 1 - openPositionIndex
+        barsHeld
       });
 
       balance = trade.balanceAfter;
       trades.push(trade);
-      equityCurve.push({ time: lastCandle.time, balance: round(balance) });
+      equityCurve.push({ time: lastTime, balance: round(balance) });
     } else {
       openPositionSnapshot = snapshotOpenPosition({
         position: openPosition,
-        lastPrice: lastCandle.close,
+        lastPrice,
         commissionRate: resolvedOptions.commissionRate
       });
     }
