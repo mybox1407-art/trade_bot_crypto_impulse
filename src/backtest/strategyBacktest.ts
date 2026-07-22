@@ -2,7 +2,8 @@ import {
   analyzeMarket,
   Candle,
   detectMarketRegime,
-  MarketRegime
+  MarketRegime,
+  MAX_RISK_PER_TRADE
 } from '../services/strategy';
 
 export type SideFilter = 'both' | 'long' | 'short';
@@ -16,6 +17,7 @@ export interface BacktestOptions {
   sideFilter?: SideFilter;
   tradeStartTime?: number;
   closeOpenPositionOnEnd?: boolean;
+  maxRiskPerTrade?: number;
 }
 
 interface OpenPosition {
@@ -159,6 +161,51 @@ function getGrossPnl(params: {
   const { side, entryPrice, exitPrice, quantity } = params;
   if (side === 'long') return (exitPrice - entryPrice) * quantity;
   return (entryPrice - exitPrice) * quantity;
+}
+
+function getRiskSizedPosition(params: {
+  currentBalance: number;
+  entryPrice: number;
+  stopLossPrice: number;
+  positionPercent: number;
+  commissionRate: number;
+  maxRiskPerTrade: number;
+}): { quantity: number; notional: number } | null {
+  const {
+    currentBalance,
+    entryPrice,
+    stopLossPrice,
+    positionPercent,
+    commissionRate,
+    maxRiskPerTrade
+  } = params;
+
+  if (!Number.isFinite(currentBalance) || currentBalance <= 0) return null;
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) return null;
+  if (!Number.isFinite(stopLossPrice)) return null;
+  if (!Number.isFinite(positionPercent) || positionPercent <= 0) return null;
+  if (!Number.isFinite(maxRiskPerTrade) || maxRiskPerTrade <= 0) return null;
+
+  const stopDistance = Math.abs(entryPrice - stopLossPrice);
+  if (!Number.isFinite(stopDistance) || stopDistance <= 0) return null;
+
+  const riskCapital = currentBalance * maxRiskPerTrade;
+  const quantityByRisk = riskCapital / stopDistance;
+
+  const rawNotionalCap = currentBalance * positionPercent;
+  const affordableNotionalCap =
+    currentBalance > 0 ? currentBalance / (1 + commissionRate) : 0;
+
+  const maxNotional = Math.max(0, Math.min(rawNotionalCap, affordableNotionalCap));
+  const quantityByPercentCap = maxNotional / entryPrice;
+
+  const quantity = Math.min(quantityByRisk, quantityByPercentCap);
+  const notional = quantity * entryPrice;
+
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  if (!Number.isFinite(notional) || notional <= 0) return null;
+
+  return { quantity, notional };
 }
 
 function emptyRegimeStats(): RegimeStats {
@@ -479,6 +526,7 @@ function tryOpenPosition(params: {
   currentBalance: number;
   positionPercent: number;
   commissionRate: number;
+  maxRiskPerTrade: number;
   sideFilter: SideFilter;
 }): OpenPosition | null {
   const {
@@ -490,6 +538,7 @@ function tryOpenPosition(params: {
     currentBalance,
     positionPercent,
     commissionRate,
+    maxRiskPerTrade,
     sideFilter
   } = params;
 
@@ -542,15 +591,16 @@ function tryOpenPosition(params: {
     if (!(stopLossPrice > entryPrice && takeProfitPrice < entryPrice)) return null;
   }
 
-  const rawNotional = currentBalance * positionPercent;
-  const maxAffordableNotional =
-    currentBalance > 0 ? currentBalance / (1 + commissionRate) : 0;
-  const notional = Math.max(0, Math.min(rawNotional, maxAffordableNotional));
+  const sizedPosition = getRiskSizedPosition({
+    currentBalance,
+    entryPrice,
+    stopLossPrice,
+    positionPercent,
+    commissionRate,
+    maxRiskPerTrade
+  });
 
-  if (!Number.isFinite(notional) || notional <= 0) return null;
-
-  const quantity = notional / entryPrice;
-  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  if (!sizedPosition) return null;
 
   return {
     symbol,
@@ -558,8 +608,8 @@ function tryOpenPosition(params: {
     regime: signal.regime,
     openedAt,
     entryPrice,
-    quantity,
-    notional,
+    quantity: sizedPosition.quantity,
+    notional: sizedPosition.notional,
     takeProfitPrice,
     stopLossPrice,
     balanceBefore: currentBalance
@@ -580,7 +630,8 @@ export function runStrategyBacktest(
     progressLogEvery: options.progressLogEvery ?? 250,
     sideFilter: options.sideFilter ?? 'both',
     tradeStartTime: options.tradeStartTime ?? 0,
-    closeOpenPositionOnEnd: options.closeOpenPositionOnEnd ?? false
+    closeOpenPositionOnEnd: options.closeOpenPositionOnEnd ?? false,
+    maxRiskPerTrade: options.maxRiskPerTrade ?? MAX_RISK_PER_TRADE
   };
 
   if (!Array.isArray(candles15m) || candles15m.length === 0) {
@@ -685,6 +736,7 @@ export function runStrategyBacktest(
         currentBalance: balance,
         positionPercent: resolvedOptions.positionPercent,
         commissionRate: resolvedOptions.commissionRate,
+        maxRiskPerTrade: resolvedOptions.maxRiskPerTrade,
         sideFilter: resolvedOptions.sideFilter
       });
 
