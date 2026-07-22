@@ -4,7 +4,7 @@ import { runStrategyBacktest, SideFilter } from './strategyBacktest';
 import { Candle } from '../services/strategy';
 
 const STARTING_BALANCE = Number(process.env.BACKTEST_STARTING_BALANCE ?? '500');
-const POSITION_PERCENT = Number(process.env.BACKTEST_POSITION_PERCENT ?? '0.1');
+const POSITION_PERCENT = Number(process.env.BACKTEST_POSITION_PERCENT ?? '0.3');
 const COMMISSION_RATE = Number(process.env.BACKTEST_COMMISSION_RATE ?? '0');
 const PROGRESS_LOG_EVERY = Number(process.env.BACKTEST_PROGRESS_EVERY ?? '250');
 const WARMUP_CANDLES_15M = Number(process.env.BACKTEST_WARMUP ?? '0');
