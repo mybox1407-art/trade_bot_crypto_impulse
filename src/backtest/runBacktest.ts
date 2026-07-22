@@ -3,14 +3,11 @@ import path from 'node:path';
 import { runStrategyBacktest, SideFilter } from './strategyBacktest';
 import { Candle } from '../services/strategy';
 
-const STARTING_BALANCE = 500;
+const STARTING_BALANCE = Number(process.env.BACKTEST_STARTING_BALANCE ?? '500');
 const POSITION_PERCENT = Number(process.env.BACKTEST_POSITION_PERCENT ?? '0.1');
 const COMMISSION_RATE = Number(process.env.BACKTEST_COMMISSION_RATE ?? '0');
 const PROGRESS_LOG_EVERY = Number(process.env.BACKTEST_PROGRESS_EVERY ?? '250');
-const WARMUP_CANDLES = Number(process.env.BACKTEST_WARMUP ?? '0');
-const CLOSE_CHECK_INTERVAL_SEC = Number(process.env.BACKTEST_CLOSE_CHECK_SEC ?? '15');
-const ONE_POSITION_AT_TIME =
-  String(process.env.BACKTEST_ONE_POSITION_AT_TIME ?? 'true').toLowerCase() !== 'false';
+const WARMUP_CANDLES_15M = Number(process.env.BACKTEST_WARMUP ?? '0');
 const CONSERVATIVE_INTRABAR =
   String(process.env.BACKTEST_CONSERVATIVE_INTRABAR ?? 'true').toLowerCase() !== 'false';
 const CLOSE_OPEN_POSITION_ON_END =
@@ -40,6 +37,7 @@ function toNumber(value: unknown): number {
 function isValidCandle(candidate: unknown): candidate is Candle {
   if (!candidate || typeof candidate !== 'object') return false;
   const item = candidate as Record<string, unknown>;
+
   return (
     Number.isFinite(toNumber(item.time)) &&
     Number.isFinite(toNumber(item.open)) &&
@@ -51,11 +49,13 @@ function isValidCandle(candidate: unknown): candidate is Candle {
 }
 
 function normalizeCandles(raw: unknown): Candle[] {
-  if (!Array.isArray(raw)) throw new Error('JSON root must be an array');
+  if (!Array.isArray(raw)) {
+    throw new Error('JSON должен содержать массив свечей.');
+  }
 
   const candles: Candle[] = raw.map((item, index) => {
     if (!isValidCandle(item)) {
-      throw new Error(`Invalid candle at index ${index}`);
+      throw new Error(`Некорректная свеча в массиве, индекс ${index}.`);
     }
 
     return {
@@ -107,10 +107,14 @@ function parseTradeStartTime(value: string): number {
   return Number.isFinite(ts) ? ts : 0;
 }
 
-function estimateBacktestTime(candlesCount: number): { minSec: number; maxSec: number } {
-  if (candlesCount <= 5000) return { minSec: 3, maxSec: 20 };
-  if (candlesCount <= 15000) return { minSec: 10, maxSec: 60 };
-  if (candlesCount <= 30000) return { minSec: 20, maxSec: 120 };
+function estimateBacktestTime(candlesCount15m: number, candlesCount1m: number): {
+  minSec: number;
+  maxSec: number;
+} {
+  const total = candlesCount15m + candlesCount1m;
+  if (total <= 20000) return { minSec: 3, maxSec: 15 };
+  if (total <= 80000) return { minSec: 10, maxSec: 45 };
+  if (total <= 200000) return { minSec: 20, maxSec: 120 };
   return { minSec: 60, maxSec: 300 };
 }
 
@@ -134,7 +138,10 @@ function printSummary(result: RunResult): void {
   console.log(`Avg win: ${formatNumber(s.avgWin, 2)}`);
   console.log(`Avg loss: ${formatNumber(s.avgLoss, 2)}`);
   console.log(
-    `Profit factor: ${colorize(Number.isFinite(s.profitFactor) ? formatNumber(s.profitFactor, 3) : 'Infinity', pfColor)}`
+    `Profit factor: ${colorize(
+      Number.isFinite(s.profitFactor) ? formatNumber(s.profitFactor, 3) : 'Infinity',
+      pfColor
+    )}`
   );
   console.log(`Стартовый баланс: ${formatNumber(s.startBalance, 2)}`);
   console.log(`Финальный баланс: ${formatNumber(s.endBalance, 2)}`);
@@ -145,13 +152,21 @@ function printSummary(result: RunResult): void {
 
 function printRegimeStats(result: RunResult): void {
   const rs = result.regimeStats;
+
   if (!rs || rs.totalBars === 0) {
     console.log('\n========== REGIME STATS ==========');
     console.log('Баров в обработке: 0');
     return;
   }
 
-  const order = ['trend_up', 'trend_down', 'range', 'high_volatility', 'breakout_watch', 'unknown'];
+  const order = [
+    'trend_up',
+    'trend_down',
+    'range',
+    'high_volatility',
+    'breakout_watch',
+    'unknown'
+  ];
 
   console.log('\n========== REGIME STATS ==========');
   console.log(`Баров в обработке: ${rs.totalBars}`);
@@ -181,7 +196,7 @@ function printRegimeStats(result: RunResult): void {
   ];
 
   if (!tradeRegs.length) {
-    console.log(' нет');
+    console.log('нет');
   }
 
   for (const reg of tradeRegs) {
@@ -194,7 +209,7 @@ function printRegimeStats(result: RunResult): void {
       .join(', ');
 
     console.log(
-      ` ${reg}: n=${t.trades} WR=${wr}% PF=${pf} net=${t.netProfit.toFixed(2)} avgBars=${t.avgBarsHeld} | ${reasons}`
+      ` ${reg}: n=${t.trades} WR=${wr}% PF=${pf} net=${t.netProfit.toFixed(2)} avgBars=${t.avgBarsHeld} | ${reasons || '—'}`
     );
   }
 
@@ -261,80 +276,95 @@ function printOpenPosition(result: RunResult): void {
 }
 
 function printUsage(): void {
-  console.log('npx tsx src/backtest/runBacktest.ts DATAFILE SYMBOL');
+  console.log('npx tsx src/backtest/runBacktest.ts DATA_15M_FILE DATA_1M_FILE SYMBOL');
   console.log('Пример:');
-  console.log('npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT');
+  console.log(
+    'npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json ./src/backtest/data/SOLUSDT_1m.json SOLUSDT'
+  );
 }
 
 function main(): void {
-  const [, , inputPathArg, symbolArg] = process.argv;
+  const [, , inputPath15mArg, inputPath1mArg, symbolArg] = process.argv;
 
-  if (!inputPathArg || !symbolArg) {
+  if (!inputPath15mArg || !inputPath1mArg || !symbolArg) {
     printUsage();
     process.exit(1);
   }
 
-  const absolutePath = path.resolve(process.cwd(), inputPathArg);
+  const path15m = path.resolve(process.cwd(), inputPath15mArg);
+  const path1m = path.resolve(process.cwd(), inputPath1mArg);
 
-  if (!fs.existsSync(absolutePath)) {
-    console.error(`Файл не найден: ${absolutePath}`);
+  if (!fs.existsSync(path15m)) {
+    console.error(`Файл 15m не найден: ${path15m}`);
     process.exit(1);
   }
 
-  let rawJson: unknown;
+  if (!fs.existsSync(path1m)) {
+    console.error(`Файл 1m не найден: ${path1m}`);
+    process.exit(1);
+  }
+
+  let raw15m: unknown;
+  let raw1m: unknown;
+
   try {
-    rawJson = JSON.parse(fs.readFileSync(absolutePath, 'utf-8'));
+    raw15m = JSON.parse(fs.readFileSync(path15m, 'utf-8'));
+    raw1m = JSON.parse(fs.readFileSync(path1m, 'utf-8'));
   } catch (e) {
     console.error('Ошибка чтения JSON.', e);
     process.exit(1);
   }
 
-  let candles: Candle[];
+  let candles15m: Candle[];
+  let candles1m: Candle[];
+
   try {
-    candles = normalizeCandles(rawJson);
+    candles15m = normalizeCandles(raw15m);
+    candles1m = normalizeCandles(raw1m);
   } catch (e) {
     console.error('Ошибка в формате свечей.', e);
     process.exit(1);
     return;
   }
 
-  const estimated = estimateBacktestTime(candles.length);
+  const estimated = estimateBacktestTime(candles15m.length, candles1m.length);
   const tradeStartTime = parseTradeStartTime(TRADE_START_AT);
   const sideFilter = parseSideFilter(SIDE_FILTER_ENV);
 
   console.log('\n========== ПАРАМЕТРЫ ЗАПУСКА ==========');
-  console.log(`Файл: ${absolutePath}`);
+  console.log(`Файл 15m: ${path15m}`);
+  console.log(`Файл 1m: ${path1m}`);
   console.log(`Инструмент: ${symbolArg}`);
-  console.log(`Свечей загружено: ${candles.length}`);
-  console.log(`Период данных: ${formatDate(candles[0].time)} -> ${formatDate(candles[candles.length - 1].time)}`);
+  console.log(`Свечей 15m: ${candles15m.length}`);
+  console.log(`Период 15m: ${formatDate(candles15m[0].time)} -> ${formatDate(candles15m[candles15m.length - 1].time)}`);
+  console.log(`Свечей 1m: ${candles1m.length}`);
+  console.log(`Период 1m: ${formatDate(candles1m[0].time)} -> ${formatDate(candles1m[candles1m.length - 1].time)}`);
   console.log(`Стартовый баланс: ${STARTING_BALANCE}`);
   console.log(`Position percent: ${formatNumber(POSITION_PERCENT * 100, 2)}%`);
   console.log(`Комиссия: ${formatNumber(COMMISSION_RATE * 100, 4)}%`);
   console.log(`Side filter: ${sideFilter}`);
   console.log(`Оценка времени: ~ ${formatDuration(estimated.minSec)} - ${formatDuration(estimated.maxSec)}`);
   console.log(`Лог прогресса: каждые ${PROGRESS_LOG_EVERY} свечей`);
-  console.log(`One position at time: ${ONE_POSITION_AT_TIME ? 'ON' : 'OFF'}`);
+  console.log(`Signal timeframe: 15m`);
+  console.log(`Execution timeframe: 1m`);
   console.log(`Conservative intrabar: ${CONSERVATIVE_INTRABAR ? 'ON' : 'OFF'}`);
-  console.log(`Warmup: ${WARMUP_CANDLES} бар`);
+  console.log(`Warmup 15m: ${WARMUP_CANDLES_15M} бар`);
   console.log(`Trade start: ${tradeStartTime ? formatDate(tradeStartTime) : 'не задан'}`);
-  console.log(`Close check interval: ${CLOSE_CHECK_INTERVAL_SEC} сек`);
   console.log(`Close open position on end: ${CLOSE_OPEN_POSITION_ON_END ? 'ON' : 'OFF'}`);
-  console.log(`Прогресс: 0/${candles.length} свечей`);
+  console.log(`Прогресс: 0/${candles15m.length} свечей 15m`);
 
   const startedAt = Date.now();
 
-  const result = runStrategyBacktest(symbolArg, candles, {
+  const result = runStrategyBacktest(symbolArg, candles15m, candles1m, {
     startingBalance: STARTING_BALANCE,
     positionPercent: POSITION_PERCENT,
     commissionRate: COMMISSION_RATE,
-    warmupCandles: WARMUP_CANDLES,
+    warmupCandles15m: WARMUP_CANDLES_15M,
     progressLogEvery: PROGRESS_LOG_EVERY,
     sideFilter,
     tradeStartTime,
-    onePositionAtTime: ONE_POSITION_AT_TIME,
     conservativeIntrabarExecution: CONSERVATIVE_INTRABAR,
-    closeOpenPositionOnEnd: CLOSE_OPEN_POSITION_ON_END,
-    closeCheckIntervalSec: CLOSE_CHECK_INTERVAL_SEC
+    closeOpenPositionOnEnd: CLOSE_OPEN_POSITION_ON_END
   });
 
   console.log('\n========== ВРЕМЯ ВЫПОЛНЕНИЯ ==========');
