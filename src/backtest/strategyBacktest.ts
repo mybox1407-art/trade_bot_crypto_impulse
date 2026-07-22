@@ -290,13 +290,22 @@ function snapshotOpenPosition(params: {
 
 function tryOpenPosition(params: {
   symbol: string;
-  visibleCandles: Candle[];
+  signalCandles: Candle[];
+  executionCandle: Candle;
   currentBalance: number;
   positionPercent: number;
   sideFilter: SideFilter;
 }): OpenPosition | null {
-  const { symbol, visibleCandles, currentBalance, positionPercent, sideFilter } = params;
-  const signal = analyzeMarket(visibleCandles);
+  const {
+    symbol,
+    signalCandles,
+    executionCandle,
+    currentBalance,
+    positionPercent,
+    sideFilter
+  } = params;
+
+  const signal = analyzeMarket(signalCandles);
 
   if (signal.side === 'none') return null;
   if (sideFilter === 'long' && signal.side !== 'long') return null;
@@ -311,12 +320,8 @@ function tryOpenPosition(params: {
     return null;
   }
 
-  const lastCandle = visibleCandles[visibleCandles.length - 1];
-  const entryPrice = toNumber(signal.price);
-  const stopLossPrice = toNumber(signal.stopLossPrice);
-  const takeProfitPrice = toNumber(signal.takeProfitPrice);
-
-  if (entryPrice <= 0 || stopLossPrice <= 0 || takeProfitPrice <= 0) return null;
+  const entryPrice = executionCandle.open;
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) return null;
 
   const notional = currentBalance * positionPercent;
   if (!Number.isFinite(notional) || notional <= 0) return null;
@@ -328,12 +333,12 @@ function tryOpenPosition(params: {
     symbol,
     side: signal.side,
     regime: signal.regime,
-    openedAt: lastCandle.time,
+    openedAt: executionCandle.time,
     entryPrice,
     quantity,
     notional,
-    takeProfitPrice,
-    stopLossPrice,
+    takeProfitPrice: signal.takeProfitPrice,
+    stopLossPrice: signal.stopLossPrice,
     balanceBefore: currentBalance
   };
 }
@@ -583,17 +588,14 @@ export function runStrategyBacktest(
   const barCounts: Record<string, number> = {};
 
   const startedAt = Date.now();
-  const startIndex = Math.max(
-    0,
-    Math.min(resolvedOptions.warmupCandles, sortedCandles.length)
-  );
+  const startIndex = Math.max(1, Math.min(resolvedOptions.warmupCandles, sortedCandles.length - 1));
   const totalBarsToProcess = Math.max(sortedCandles.length - startIndex, 0);
 
   for (let i = startIndex; i < sortedCandles.length; i++) {
-    const visibleCandles = sortedCandles.slice(0, i + 1);
+    const signalCandles = sortedCandles.slice(0, i);
     const currentCandle = sortedCandles[i];
 
-    const regInfo = detectMarketRegime(visibleCandles);
+    const regInfo = detectMarketRegime(signalCandles);
     const regName = regInfo.ready ? regInfo.regime : 'unknown';
     barCounts[regName] = (barCounts[regName] ?? 0) + 1;
 
@@ -642,13 +644,10 @@ export function runStrategyBacktest(
       if (result.trade) {
         trades.push(result.trade);
         equityCurve.push({ time: currentCandle.time, balance: round(balance) });
-
-        if (!result.stillOpen) {
-          cooldownRemaining = resolvedOptions.cooldownCandles;
-          openPosition = null;
-          openPositionIndex = -1;
-          continue;
-        }
+        cooldownRemaining = resolvedOptions.cooldownCandles;
+        openPosition = null;
+        openPositionIndex = -1;
+        continue;
       }
     }
 
@@ -669,20 +668,40 @@ export function runStrategyBacktest(
 
     const maybeOpen = tryOpenPosition({
       symbol,
-      visibleCandles,
+      signalCandles,
+      executionCandle: currentCandle,
       currentBalance: balance,
       positionPercent: resolvedOptions.positionPercent,
       sideFilter: resolvedOptions.sideFilter
     });
 
-    if (maybeOpen) {
-      openPosition = maybeOpen;
-      openPositionIndex = i;
+    if (!maybeOpen) continue;
 
-      if (resolvedOptions.maxTradesPerDay > 0) {
-        const dayKey = utcDateKey(currentCandle.time);
-        entriesPerDay.set(dayKey, (entriesPerDay.get(dayKey) ?? 0) + 1);
-      }
+    openPosition = maybeOpen;
+    openPositionIndex = i;
+
+    if (resolvedOptions.maxTradesPerDay > 0) {
+      const dayKey = utcDateKey(currentCandle.time);
+      entriesPerDay.set(dayKey, (entriesPerDay.get(dayKey) ?? 0) + 1);
+    }
+
+    const sameCandleResult = processExitsOnCandle({
+      position: openPosition,
+      candle: currentCandle,
+      balance,
+      commissionRate: resolvedOptions.commissionRate,
+      barsHeld: 0,
+      conservative: resolvedOptions.conservativeIntrabarExecution
+    });
+
+    balance = sameCandleResult.balance;
+
+    if (sameCandleResult.trade) {
+      trades.push(sameCandleResult.trade);
+      equityCurve.push({ time: currentCandle.time, balance: round(balance) });
+      cooldownRemaining = resolvedOptions.cooldownCandles;
+      openPosition = null;
+      openPositionIndex = -1;
     }
   }
 
