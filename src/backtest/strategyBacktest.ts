@@ -446,3 +446,291 @@ function calculateDrawdown(equityCurve: Array<{ time: number; balance: number }>
     const ddPct = peak > 0 ? dd / peak : 0;
     if (dd > maxDrawdownAbs) maxDrawdownAbs = dd;
     if (ddPct > maxDrawdownPct) maxDrawdownPct = ddPct;
+  }
+
+  return {
+    maxDrawdownAbs: round(maxDrawdownAbs),
+    maxDrawdownPct: round(maxDrawdownPct, 6)
+  };
+}
+
+function buildSummary(params: {
+  symbol: string;
+  trades: BacktestTrade[];
+  startBalance: number;
+  endBalance: number;
+  equityCurve: Array<{ time: number; balance: number }>;
+}): BacktestSummary {
+  const { symbol, trades, startBalance, endBalance, equityCurve } = params;
+
+  const wins = trades.filter(t => t.netPnl > 0);
+  const losses = trades.filter(t => t.netPnl <= 0);
+
+  const grossProfit = wins.reduce((a, b) => a + b.netPnl, 0);
+  const grossLossSum = losses.reduce((a, b) => a + b.netPnl, 0);
+  const grossLossAbs = Math.abs(grossLossSum);
+  const netProfit = trades.reduce((a, b) => a + b.netPnl, 0);
+
+  const profitFactor =
+    grossLossAbs > 0 ? grossProfit / grossLossAbs : grossProfit > 0 ? Infinity : 0;
+
+  const returnPct = startBalance > 0 ? (endBalance - startBalance) / startBalance : 0;
+  const dd = calculateDrawdown(equityCurve);
+
+  return {
+    symbol,
+    tradesCount: trades.length,
+    wins: wins.length,
+    losses: losses.length,
+    winRate: round(trades.length ? wins.length / trades.length : 0, 6),
+    grossProfit: round(grossProfit),
+    grossLoss: round(grossLossSum),
+    netProfit: round(netProfit),
+    avgNetPnl: round(trades.length ? netProfit / trades.length : 0),
+    avgWin: round(wins.length ? grossProfit / wins.length : 0),
+    avgLoss: round(losses.length ? grossLossSum / losses.length : 0),
+    profitFactor: Number.isFinite(profitFactor) ? round(profitFactor, 6) : Infinity,
+    startBalance: round(startBalance),
+    endBalance: round(endBalance),
+    returnPct: round(returnPct, 6),
+    maxDrawdownAbs: dd.maxDrawdownAbs,
+    maxDrawdownPct: dd.maxDrawdownPct
+  };
+}
+
+export function runStrategyBacktest(
+  symbol: string,
+  candles: Candle[],
+  options: BacktestOptions = {}
+): BacktestResult {
+  const resolvedOptions: Required<BacktestOptions> = {
+    startingBalance: options.startingBalance ?? 500,
+    commissionRate: options.commissionRate ?? 0.0005,
+    warmupCandles: options.warmupCandles ?? 250,
+    onePositionAtTime: options.onePositionAtTime ?? true,
+    conservativeIntrabarExecution: options.conservativeIntrabarExecution ?? true,
+    cooldownCandles: options.cooldownCandles ?? 12,
+    progressLogEvery: options.progressLogEvery ?? 250,
+    maxTradesPerDay: options.maxTradesPerDay ?? 0,
+    timeStopBars: options.timeStopBars ?? 64,
+    earlyAbortBars: options.earlyAbortBars ?? 16,
+    earlyAbortMinR: options.earlyAbortMinR ?? 0.35,
+    sideFilter: options.sideFilter ?? 'both'
+  };
+
+  if (!Array.isArray(candles) || candles.length === 0) {
+    return {
+      symbol,
+      options: resolvedOptions,
+      trades: [],
+      summary: buildSummary({
+        symbol,
+        trades: [],
+        startBalance: resolvedOptions.startingBalance,
+        endBalance: resolvedOptions.startingBalance,
+        equityCurve: []
+      }),
+      equityCurve: [],
+      regimeStats: emptyRegimeStats()
+    };
+  }
+
+  const sortedCandles = [...candles].sort((a, b) => a.time - b.time);
+
+  let balance = resolvedOptions.startingBalance;
+  let openPosition: OpenPosition | null = null;
+  let openPositionIndex = -1;
+  let cooldownRemaining = 0;
+
+  const entriesPerDay = new Map<string, number>();
+  const trades: BacktestTrade[] = [];
+  const equityCurve: Array<{ time: number; balance: number }> = [
+    { time: sortedCandles[0].time, balance: round(balance) }
+  ];
+  const barCounts: Record<string, number> = {};
+
+  const startedAt = Date.now();
+  const totalBarsToProcess = Math.max(sortedCandles.length - resolvedOptions.warmupCandles, 0);
+
+  for (let i = resolvedOptions.warmupCandles; i < sortedCandles.length; i++) {
+    const visibleCandles = sortedCandles.slice(0, i + 1);
+    const currentCandle = sortedCandles[i];
+
+    const regInfo = detectMarketRegime(visibleCandles);
+    const regName = regInfo.ready ? regInfo.regime : 'unknown';
+    barCounts[regName] = (barCounts[regName] ?? 0) + 1;
+
+    if (resolvedOptions.progressLogEvery > 0) {
+      const processedBars = i - resolvedOptions.warmupCandles;
+      const shouldLog =
+        processedBars > 0 &&
+        (processedBars % resolvedOptions.progressLogEvery === 0 ||
+          i === sortedCandles.length - 1);
+
+      if (shouldLog) {
+        const elapsedSec = (Date.now() - startedAt) / 1000;
+        const speed = processedBars / Math.max(elapsedSec, 1e-9);
+        const remainingBars = Math.max(totalBarsToProcess - processedBars, 0);
+        const etaSec = remainingBars / Math.max(speed, 1e-9);
+        const progressPct =
+          totalBarsToProcess > 0 ? (processedBars / totalBarsToProcess) * 100 : 100;
+
+        console.log(
+          [
+            `[${symbol}]`,
+            `Прогресс: ${processedBars}/${totalBarsToProcess}`,
+            `${round(progressPct, 2)}%`,
+            `Скорость: ${round(speed, 2)} свеч/сек`,
+            `ETA: ${formatDuration(etaSec)}`,
+            `Сделок: ${trades.length}`,
+            `Баланс: ${round(balance, 2)}`,
+            `Открыта: ${openPosition ? `${openPosition.side}@${round(openPosition.entryPrice, 4)}` : 'нет'}`
+          ].join(' | ')
+        );
+      }
+    }
+
+    if (openPosition) {
+      const barsHeld = i - openPositionIndex;
+
+      if (barsHeld >= resolvedOptions.timeStopBars) {
+        const trade = buildTrade({
+          symbol,
+          position: openPosition,
+          exitPrice: currentCandle.close,
+          closedAt: currentCandle.time,
+          closeReason: 'time_stop',
+          balanceBeforeClose: balance,
+          commissionRate: resolvedOptions.commissionRate,
+          barsHeld
+        });
+
+        balance = trade.balanceAfter;
+        trades.push(trade);
+        equityCurve.push({ time: currentCandle.time, balance: round(balance) });
+        cooldownRemaining = resolvedOptions.cooldownCandles;
+        openPosition = null;
+        openPositionIndex = -1;
+      } else if (
+        resolvedOptions.earlyAbortBars > 0 &&
+        barsHeld >= resolvedOptions.earlyAbortBars
+      ) {
+        const fav =
+          openPosition.side === 'long'
+            ? currentCandle.close - openPosition.entryPrice
+            : openPosition.entryPrice - currentCandle.close;
+
+        if (fav < resolvedOptions.earlyAbortMinR * openPosition.initialR) {
+          const trade = buildTrade({
+            symbol,
+            position: openPosition,
+            exitPrice: currentCandle.close,
+            closedAt: currentCandle.time,
+            closeReason: 'early_abort',
+            balanceBeforeClose: balance,
+            commissionRate: resolvedOptions.commissionRate,
+            barsHeld
+          });
+
+          balance = trade.balanceAfter;
+          trades.push(trade);
+          equityCurve.push({ time: currentCandle.time, balance: round(balance) });
+          cooldownRemaining = resolvedOptions.cooldownCandles;
+          openPosition = null;
+          openPositionIndex = -1;
+        }
+      }
+    }
+
+    if (openPosition) {
+      const result = processExitsOnCandle({
+        symbol,
+        position: openPosition,
+        candle: currentCandle,
+        balance,
+        commissionRate: resolvedOptions.commissionRate,
+        barsHeld: i - openPositionIndex,
+        conservative: resolvedOptions.conservativeIntrabarExecution
+      });
+
+      balance = result.balance;
+
+      if (result.trade) {
+        trades.push(result.trade);
+        equityCurve.push({ time: currentCandle.time, balance: round(balance) });
+      }
+
+      if (!result.stillOpen) {
+        cooldownRemaining = resolvedOptions.cooldownCandles;
+        openPosition = null;
+        openPositionIndex = -1;
+      }
+    }
+
+    if (openPosition && resolvedOptions.onePositionAtTime) continue;
+
+    if (cooldownRemaining > 0) {
+      cooldownRemaining -= 1;
+      continue;
+    }
+
+    if (resolvedOptions.maxTradesPerDay > 0) {
+      const dayKey = utcDateKey(currentCandle.time);
+      const used = entriesPerDay.get(dayKey) ?? 0;
+      if (used >= resolvedOptions.maxTradesPerDay) continue;
+    }
+
+    const maybeOpen = tryOpenPosition({
+      symbol,
+      visibleCandles,
+      currentBalance: balance,
+      commissionRate: resolvedOptions.commissionRate,
+      sideFilter: resolvedOptions.sideFilter
+    });
+
+    if (maybeOpen) {
+      openPosition = maybeOpen;
+      openPositionIndex = i;
+
+      if (resolvedOptions.maxTradesPerDay > 0) {
+        const dayKey = utcDateKey(currentCandle.time);
+        entriesPerDay.set(dayKey, (entriesPerDay.get(dayKey) ?? 0) + 1);
+      }
+    }
+  }
+
+  if (openPosition) {
+    const lastCandle = sortedCandles[sortedCandles.length - 1];
+    const trade = buildTrade({
+      symbol,
+      position: openPosition,
+      exitPrice: lastCandle.close,
+      closedAt: lastCandle.time,
+      closeReason: 'forced_close',
+      balanceBeforeClose: balance,
+      commissionRate: resolvedOptions.commissionRate,
+      barsHeld: sortedCandles.length - 1 - openPositionIndex
+    });
+
+    balance = trade.balanceAfter;
+    trades.push(trade);
+    equityCurve.push({ time: lastCandle.time, balance: round(balance) });
+  }
+
+  const regimeStats = buildRegimeStats(trades, barCounts);
+
+  return {
+    symbol,
+    options: resolvedOptions,
+    trades,
+    summary: buildSummary({
+      symbol,
+      trades,
+      startBalance: resolvedOptions.startingBalance,
+      endBalance: balance,
+      equityCurve
+    }),
+    equityCurve,
+    regimeStats
+  };
+}
