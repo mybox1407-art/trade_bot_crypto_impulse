@@ -7,3 +7,6 @@ docker network connect n8n-docker_default trade_bot_crypto_impulse
 npm install
 
 npx tsx src/backtest/download-binance-candles.ts SOLUSDT 30 15m
+
+npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT
+npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 12 short
