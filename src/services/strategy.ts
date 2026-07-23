@@ -2,6 +2,7 @@ import { MACD, RSI, ATR, ADX, BollingerBands, EMA } from 'technicalindicators';
 
 export const STARTING_BALANCE = 500;
 export const MAX_RISK_PER_TRADE = 0.01;
+export const ENABLE_TREND_UP_TRADES = false;
 const MIN_ADX_TREND = 20;
 const MIN_ADX_RANGE = 18;
 const BB_SQUEEZE_THRESHOLD = 0.05;
@@ -169,7 +170,7 @@ export function analyzeMarket(candles: Candle[]) {
   let stopLossPrice: number | null = null;
   let positionSize: number | null = null;
 
-  if (regime === 'trend_up' && macdCrossUp && rsiBull && price > regimeIndicators.ema200) {
+  if (ENABLE_TREND_UP_TRADES && regime === 'trend_up' && macdCrossUp && rsiBull && price > regimeIndicators.ema200) {
     side = 'long';
     buy = true;
     stopLossPrice = price - lastAtr * 1.4;
@@ -245,6 +246,7 @@ export function analyzeMarket(candles: Candle[]) {
       regimeIndicators,
       breakoutAtrBufferK: BREAKOUT_ATR_BUFFER_K,
       breakoutBodyAtrMin: BREAKOUT_BODY_ATR_MIN,
+      trendUpTradesEnabled: ENABLE_TREND_UP_TRADES,
       ready: true
     }
   };
