@@ -1,0 +1,4 @@
+regime,trades,wins,losses,winRate,netProfit,profitFactor,avgBarsHeld
+breakout_watch,918,573,345,0.624183,2785.52241087,2.956663,11.56
+trend_down,176,87,89,0.494318,253.67329979,1.610171,13.16
+trend_up,110,47,63,0.427273,-9.63089839,0.966493,13.65

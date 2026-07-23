@@ -1,0 +1,2 @@
+symbol,tradesCount,wins,losses,winRate,grossProfit,grossLoss,netProfit,avgNetPnl,avgWin,avgLoss,profitFactor,startBalance,endBalance,returnPct,maxDrawdownAbs,maxDrawdownPct
+SOLUSDT,1204,707,497,0.587209,5156.34065882,-2126.77584655,3029.56481227,2.51624984,7.29326826,-4.27922706,2.424487,500,3529.56481227,6.05913,45.59778464,0.026842
