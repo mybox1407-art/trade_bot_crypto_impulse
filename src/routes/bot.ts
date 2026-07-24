@@ -15,9 +15,9 @@ router.post('/run', async (req, res) => {
     }
 
     const result = await runBotOnce(symbol, timeframe);
-    res.json(result);
+    return res.json(result);
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       message: error instanceof Error ? error.message : 'Unknown error'
     });
