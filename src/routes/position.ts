@@ -4,7 +4,12 @@ import {
   closePosition,
   getBalance,
   getLastClosedTrade,
+  getOpenPositionsCount,
   getPosition,
+  getPositionById,
+  getPositions,
+  hasOpenPosition,
+  MAX_PARALLEL_POSITIONS,
   openPosition
 } from '../services/positionState';
 
@@ -14,7 +19,9 @@ router.get('/status', (_req, res) => {
   res.json({
     ok: true,
     balance: getBalance(),
-    position: getPosition(),
+    openPositionsCount: getOpenPositionsCount(),
+    maxParallelPositions: MAX_PARALLEL_POSITIONS,
+    positions: getPositions(),
     lastClosedTrade: getLastClosedTrade()
   });
 });
@@ -42,11 +49,19 @@ router.post('/open', async (req, res) => {
       });
     }
 
-    if (getPosition()) {
+    if (hasOpenPosition(symbol)) {
       return res.status(409).json({
         ok: false,
-        message: 'Position already open',
-        position: getPosition()
+        message: `Position for ${symbol} already open`,
+        positions: getPositions()
+      });
+    }
+
+    if (getOpenPositionsCount() >= MAX_PARALLEL_POSITIONS) {
+      return res.status(409).json({
+        ok: false,
+        message: `Max ${MAX_PARALLEL_POSITIONS} open positions reached`,
+        positions: getPositions()
       });
     }
 
@@ -59,51 +74,70 @@ router.post('/open', async (req, res) => {
       stopLossPrice
     });
 
-    res.json(result);
+    const statusCode = result.ok ? 200 : 400;
+    return res.status(statusCode).json(result);
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
 
-router.get('/check-close', async (_req, res) => {
+router.get('/check-close', async (req, res) => {
   try {
-    const pos = getPosition();
+    const { symbol } = req.query as { symbol?: string };
+    const positions = symbol ? getPositions().filter(position => position.symbol === symbol) : getPositions();
 
-    if (!pos) {
+    if (positions.length === 0) {
       return res.json({ ok: true, action: 'none', reason: 'no_position' });
     }
 
-    const currentPrice = await getCurrentPrice(pos.symbol);
+    const symbols = [...new Set(positions.map(position => position.symbol))];
+    const prices = await Promise.all(symbols.map(async currentSymbol => [currentSymbol, await getCurrentPrice(currentSymbol)] as const));
+    const priceMap = Object.fromEntries(prices);
+    const closed: unknown[] = [];
 
-    const hitTakeProfit = pos.side === 'long'
-      ? currentPrice >= pos.takeProfitPrice
-      : currentPrice <= pos.takeProfitPrice;
+    for (const pos of positions) {
+      const currentPrice = priceMap[pos.symbol];
 
-    const hitStopLoss = pos.side === 'long'
-      ? currentPrice <= pos.stopLossPrice
-      : currentPrice >= pos.stopLossPrice;
+      const hitTakeProfit = pos.side === 'long'
+        ? currentPrice >= pos.takeProfitPrice
+        : currentPrice <= pos.takeProfitPrice;
 
-    if (hitTakeProfit) {
-      const result = closePosition(currentPrice, 'take_profit');
-      return res.json({ ok: true, action: 'closed', reason: 'take_profit', currentPrice, result });
+      const hitStopLoss = pos.side === 'long'
+        ? currentPrice <= pos.stopLossPrice
+        : currentPrice >= pos.stopLossPrice;
+
+      if (hitTakeProfit) {
+        const result = closePosition(pos.id, currentPrice, 'take_profit');
+        closed.push({ positionId: pos.id, symbol: pos.symbol, reason: 'take_profit', currentPrice, result });
+        continue;
+      }
+
+      if (hitStopLoss) {
+        const result = closePosition(pos.id, currentPrice, 'stop_loss');
+        closed.push({ positionId: pos.id, symbol: pos.symbol, reason: 'stop_loss', currentPrice, result });
+      }
     }
 
-    if (hitStopLoss) {
-      const result = closePosition(currentPrice, 'stop_loss');
-      return res.json({ ok: true, action: 'closed', reason: 'stop_loss', currentPrice, result });
+    if (closed.length > 0) {
+      return res.json({
+        ok: true,
+        action: 'closed',
+        closed,
+        positions: getPositions()
+      });
     }
 
     return res.json({
       ok: true,
       action: 'hold',
-      currentPrice,
-      position: pos
+      prices: priceMap,
+      positions: getPositions()
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       message: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -112,19 +146,28 @@ router.get('/check-close', async (_req, res) => {
 
 router.post('/close', async (req, res) => {
   try {
-    const { reason } = req.body as { reason?: 'take_profit' | 'stop_loss' | 'manual' };
-    const pos = getPosition();
+    const { positionId, symbol, reason } = req.body as {
+      positionId?: string;
+      symbol?: string;
+      reason?: 'take_profit' | 'stop_loss' | 'manual';
+    };
 
-    if (!pos) {
+    const position = positionId
+      ? getPositionById(positionId)
+      : symbol
+        ? getPosition(symbol)
+        : getPosition();
+
+    if (!position) {
       return res.status(409).json({ ok: false, message: 'No open position' });
     }
 
-    const exitPrice = await getCurrentPrice(pos.symbol);
-    const result = closePosition(exitPrice, reason || 'manual');
+    const exitPrice = await getCurrentPrice(position.symbol);
+    const result = closePosition(position.id, exitPrice, reason || 'manual');
 
-    res.json(result);
+    return res.json(result);
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       message: error instanceof Error ? error.message : 'Unknown error'
     });
