@@ -11,10 +11,6 @@ npx tsx src/backtest/downloadCandles.ts SOLUSDT 30 15m
 npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT
 npx tsx src/backtest/runBacktest.ts ./src/backtest/data/SOLUSDT_15m.json SOLUSDT 12 short
 
-BACKTEST_TRADE_START_AT="2026-07-16T00:00:00Z" \
-BACKTEST_WARMUP=0 \
-BACKTEST_POSITION_PERCENT=0.1 \
-BACKTEST_COMMISSION_RATE=0 \
 npx tsx src/backtest/runBacktest.ts \
 ./src/backtest/data/SOLUSDT_15m.json \
 ./src/backtest/data/SOLUSDT_1m.json \
