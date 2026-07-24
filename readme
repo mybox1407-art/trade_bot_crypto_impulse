@@ -6,8 +6,8 @@ docker compose up -d --build
 docker network connect n8n-docker_default trade_bot_crypto_impulse
 npm install
 
-npx tsx src/backtest/downloadCandles.ts SOLUSDT 30 15m
-
+npx tsx src/backtest/downloadCandles.ts SOLUSDT 120 15m
+npx tsx src/backtest/downloadCandles.ts SOLUSDT 120 1m
 npx tsx src/backtest/runBacktest.ts \
 ./src/backtest/data/SOLUSDT_15m.json \
 ./src/backtest/data/SOLUSDT_1m.json \
