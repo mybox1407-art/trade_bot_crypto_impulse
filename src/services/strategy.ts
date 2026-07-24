@@ -2,6 +2,7 @@ import { MACD, RSI, ATR, ADX, BollingerBands, EMA } from 'technicalindicators';
 
 export const STARTING_BALANCE = 500;
 export const MAX_RISK_PER_TRADE = 0.01;
+export const TRADE_FEE_RATE = 0.00075;
 export const ENABLE_TREND_UP_TRADES = false;
 const MIN_ADX_TREND = 20;
 const MIN_ADX_RANGE = 18;
@@ -212,7 +213,7 @@ export function analyzeMarket(candles: Candle[]) {
     }
   }
 
-  if (regime === 'high_volatility') {
+  if (regime === 'high_volatility' || regime === 'range') {
     buy = false;
     sell = false;
     side = 'none';
@@ -247,6 +248,7 @@ export function analyzeMarket(candles: Candle[]) {
       breakoutAtrBufferK: BREAKOUT_ATR_BUFFER_K,
       breakoutBodyAtrMin: BREAKOUT_BODY_ATR_MIN,
       trendUpTradesEnabled: ENABLE_TREND_UP_TRADES,
+      tradeFeeRate: TRADE_FEE_RATE,
       ready: true
     }
   };
