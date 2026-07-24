@@ -94,56 +94,65 @@ router.post('/open', async (req, res) => {
 router.post('/check-close', async (req, res) => {
   try {
     const symbol = normalizeSymbol((req.body as { symbol?: string }).symbol);
-    const positions = symbol ? getPositions().filter(position => position.symbol === symbol) : getPositions();
 
-    if (positions.length === 0) {
-      return res.json({ ok: true, action: 'none', reason: 'no_position' });
+    if (!symbol) {
+      return res.status(400).json({
+        ok: false,
+        message: 'symbol is required'
+      });
     }
 
-    const symbols = [...new Set(positions.map(position => position.symbol))];
-    const prices = await Promise.all(
-      symbols.map(async currentSymbol => [currentSymbol, await getCurrentPrice(currentSymbol)] as const)
-    );
-    const priceMap = Object.fromEntries(prices);
-    const closed: unknown[] = [];
+    const position = getPosition(symbol);
 
-    for (const pos of positions) {
-      const currentPrice = priceMap[pos.symbol];
-
-      const hitTakeProfit = pos.side === 'long'
-        ? currentPrice >= pos.takeProfitPrice
-        : currentPrice <= pos.takeProfitPrice;
-
-      const hitStopLoss = pos.side === 'long'
-        ? currentPrice <= pos.stopLossPrice
-        : currentPrice >= pos.stopLossPrice;
-
-      if (hitTakeProfit) {
-        const result = closePosition(pos.id, currentPrice, 'take_profit');
-        closed.push({ positionId: pos.id, symbol: pos.symbol, reason: 'take_profit', currentPrice, result });
-        continue;
-      }
-
-      if (hitStopLoss) {
-        const result = closePosition(pos.id, currentPrice, 'stop_loss');
-        closed.push({ positionId: pos.id, symbol: pos.symbol, reason: 'stop_loss', currentPrice, result });
-      }
+    if (!position) {
+      return res.json({
+        ok: true,
+        action: 'none',
+        symbol,
+        reason: 'no_position'
+      });
     }
 
-    if (closed.length > 0) {
+    const currentPrice = await getCurrentPrice(position.symbol);
+
+    const hitTakeProfit = position.side === 'long'
+      ? currentPrice >= position.takeProfitPrice
+      : currentPrice <= position.takeProfitPrice;
+
+    const hitStopLoss = position.side === 'long'
+      ? currentPrice <= position.stopLossPrice
+      : currentPrice >= position.stopLossPrice;
+
+    if (hitTakeProfit) {
+      const result = closePosition(position.id, currentPrice, 'take_profit');
+
       return res.json({
         ok: true,
         action: 'closed',
-        closed,
-        positions: getPositions()
+        symbol: position.symbol,
+        currentPrice,
+        result
+      });
+    }
+
+    if (hitStopLoss) {
+      const result = closePosition(position.id, currentPrice, 'stop_loss');
+
+      return res.json({
+        ok: true,
+        action: 'closed',
+        symbol: position.symbol,
+        currentPrice,
+        result
       });
     }
 
     return res.json({
       ok: true,
       action: 'hold',
-      prices: priceMap,
-      positions: getPositions()
+      symbol: position.symbol,
+      currentPrice,
+      position
     });
   } catch (error) {
     return res.status(500).json({
