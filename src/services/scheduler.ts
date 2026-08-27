@@ -33,8 +33,8 @@ async function checkSignals() {
           symbol,
           timeframe: '15m',
           side: 'none',
-          price: result.price ?? 0,
-          regime: result.regime ?? 'unknown',
+          price: 0,
+          regime: 'unknown',
           takeProfitPrice: null,
           stopLossPrice: null,
           positionSize: null,
@@ -423,11 +423,11 @@ export function startScheduler() {
   console.log(`[${new Date().toISOString()}] Starting scheduler...`);
   console.log(`[${new Date().toISOString()}] Signal check interval: ${SIGNAL_CHECK_INTERVAL_MS / 1000}s`);
   console.log(`[${new Date().toISOString()}] Position check interval: ${POSITION_CHECK_INTERVAL_MS / 1000}s`);
-  console.log(`[${new Date().toISOString()}] Trading pairs: ${TRADING_PAIRS.join(', ')}`);
+  console.log(`[${new Date().toISOString()}] Trading pairs: ${[...TRADING_PAIRS].join(', ')}`);
 
   notifyStartup({
     port: Number(process.env.PORT) || 3002,
-    tradingPairs: TRADING_PAIRS,
+    tradingPairs: [...TRADING_PAIRS],
     signalInterval: SIGNAL_CHECK_INTERVAL_MS / 1000,
     positionInterval: POSITION_CHECK_INTERVAL_MS / 1000
   });
