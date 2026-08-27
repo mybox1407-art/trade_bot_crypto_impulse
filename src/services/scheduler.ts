@@ -26,7 +26,6 @@ async function checkSignals() {
     try {
       const result = await runBotOnce(symbol, '15m');
 
-      // Type guard - проверяем ready и сужаем тип
       if (!result.ready) {
         console.log(`[${new Date().toISOString()}] ${symbol}: Not ready - ${result.reason}`);
         logSignalCheck({
@@ -61,7 +60,6 @@ async function checkSignals() {
         continue;
       }
 
-      // Теперь TypeScript знает что result.ready === true, но нужно явно указать тип
       const buy = (result as any).buy as boolean;
       const sell = (result as any).sell as boolean;
       const side = (result as any).side as 'long' | 'short' | 'none';
@@ -287,8 +285,8 @@ async function checkSignals() {
       });
       notifyError({
         context: 'signal_check',
-        symbol,
-        error: errorMsg
+        symbol: symbol,
+        error: String(errorMsg)
       });
     }
   }
@@ -380,12 +378,13 @@ async function checkPositions() {
             context: 'close_position',
             symbol: position.symbol,
             positionId: position.id,
-            error: result.message
+            error: String(result.message),
+            stack: undefined
           });
           notifyError({
             context: 'close_position',
             symbol: position.symbol,
-            error: result.message
+            error: String(result.message)
           });
         }
       } else if (hitStopLoss) {
@@ -399,12 +398,13 @@ async function checkPositions() {
             context: 'close_position',
             symbol: position.symbol,
             positionId: position.id,
-            error: result.message
+            error: String(result.message),
+            stack: undefined
           });
           notifyError({
             context: 'close_position',
             symbol: position.symbol,
-            error: result.message
+            error: String(result.message)
           });
         }
       } else {
@@ -418,13 +418,13 @@ async function checkPositions() {
         context: 'position_check',
         symbol: position.symbol,
         positionId: position.id,
-        error: errorMsg,
+        error: String(errorMsg),
         stack: error instanceof Error ? error.stack : undefined
       });
       notifyError({
         context: 'position_check',
         symbol: position.symbol,
-        error: errorMsg
+        error: String(errorMsg)
       });
     }
   }
