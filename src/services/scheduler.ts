@@ -14,6 +14,7 @@ import {
   updatePositionMetadata
 } from './positionState';
 import { logSignalCheck, logPositionCheck, logError } from './logger';
+import { notifyStartup, notifyError } from './telegram';
 
 let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
@@ -273,6 +274,11 @@ async function checkSignals() {
         error: errorMsg,
         stack: error instanceof Error ? error.stack : undefined
       });
+      notifyError({
+        context: 'signal_check',
+        symbol,
+        error: errorMsg
+      });
     }
   }
 }
@@ -365,6 +371,11 @@ async function checkPositions() {
             positionId: position.id,
             error: result.message
           });
+          notifyError({
+            context: 'close_position',
+            symbol: position.symbol,
+            error: result.message
+          });
         }
       } else if (hitStopLoss) {
         const result = closePosition(position.id, currentPrice, 'stop_loss');
@@ -377,6 +388,11 @@ async function checkPositions() {
             context: 'close_position',
             symbol: position.symbol,
             positionId: position.id,
+            error: result.message
+          });
+          notifyError({
+            context: 'close_position',
+            symbol: position.symbol,
             error: result.message
           });
         }
@@ -394,6 +410,11 @@ async function checkPositions() {
         error: errorMsg,
         stack: error instanceof Error ? error.stack : undefined
       });
+      notifyError({
+        context: 'position_check',
+        symbol: position.symbol,
+        error: errorMsg
+      });
     }
   }
 }
@@ -403,6 +424,13 @@ export function startScheduler() {
   console.log(`[${new Date().toISOString()}] Signal check interval: ${SIGNAL_CHECK_INTERVAL_MS / 1000}s`);
   console.log(`[${new Date().toISOString()}] Position check interval: ${POSITION_CHECK_INTERVAL_MS / 1000}s`);
   console.log(`[${new Date().toISOString()}] Trading pairs: ${TRADING_PAIRS.join(', ')}`);
+
+  notifyStartup({
+    port: Number(process.env.PORT) || 3002,
+    tradingPairs: TRADING_PAIRS,
+    signalInterval: SIGNAL_CHECK_INTERVAL_MS / 1000,
+    positionInterval: POSITION_CHECK_INTERVAL_MS / 1000
+  });
 
   checkSignals();
   signalCheckInterval = setInterval(checkSignals, SIGNAL_CHECK_INTERVAL_MS);
