@@ -8,6 +8,8 @@ services:
     environment:
       - PORT=3002
       - NODE_ENV=production
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     volumes:
       - ./logs:/app/logs
       - ./signal_log.csv:/app/signal_log.csv
