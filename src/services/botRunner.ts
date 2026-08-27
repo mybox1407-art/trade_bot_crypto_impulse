@@ -19,9 +19,9 @@ export async function runBotOnce(symbol = 'BTC/USDT', timeframe = '15m') {
       side: result.side,
       price: result.price,
       regime: result.regime,
-      takeProfitPrice: result.takeProfitPrice ?? '',
-      stopLossPrice: result.stopLossPrice ?? '',
-      positionSize: result.positionSize ?? '',
+      takeProfitPrice: result.takeProfitPrice,
+      stopLossPrice: result.stopLossPrice,
+      positionSize: result.positionSize,
       macdCrossUp: result.indicators.macdCrossUp,
       macdCrossDown: result.indicators.macdCrossDown,
       lastRsi: result.indicators.lastRsi,
@@ -31,13 +31,15 @@ export async function runBotOnce(symbol = 'BTC/USDT', timeframe = '15m') {
       bbUpper: result.indicators.bbUpper,
       bbMiddle: result.indicators.bbMiddle,
       bbLower: result.indicators.bbLower,
-      adx: result.indicators.regimeIndicators?.adx ?? '',
-      adxRising: result.indicators.regimeIndicators?.adxRising ?? '',
-      ema20: result.indicators.regimeIndicators?.ema20 ?? '',
-      ema50: result.indicators.regimeIndicators?.ema50 ?? '',
-      ema200: result.indicators.regimeIndicators?.ema200 ?? '',
-      bbWidth: result.indicators.regimeIndicators?.bbWidth ?? '',
-      atrPct: result.indicators.regimeIndicators?.atrPct ?? ''
+      adx: result.indicators.regimeIndicators?.adx ?? 0,
+      adxRising: result.indicators.regimeIndicators?.adxRising ?? false,
+      ema20: result.indicators.regimeIndicators?.ema20 ?? 0,
+      ema50: result.indicators.regimeIndicators?.ema50 ?? 0,
+      ema200: result.indicators.regimeIndicators?.ema200 ?? 0,
+      bbWidth: result.indicators.regimeIndicators?.bbWidth ?? 0,
+      atrPct: result.indicators.regimeIndicators?.atrPct ?? 0,
+      signalTriggered: true,
+      positionOpened: false
     });
   }
 
