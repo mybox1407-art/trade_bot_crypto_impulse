@@ -1,5 +1,6 @@
 import { MAX_RISK_PER_TRADE, STARTING_BALANCE, TRADE_FEE_RATE } from './strategy';
 import { logPositionOpen, logPositionClose } from './logger';
+import { notifyPositionOpen, notifyPositionClose } from './telegram';
 
 export const POSITION_PERCENT = 0.30;
 export const MAX_PARALLEL_POSITIONS = 3;
@@ -256,6 +257,19 @@ export function openPosition(data: {
     atrPct: data.metadata?.atrPct ?? 0
   });
 
+  notifyPositionOpen({
+    symbol: position.symbol,
+    side: position.side,
+    entryPrice: position.entryPrice,
+    quantity: position.quantity,
+    notional: position.notional,
+    takeProfitPrice: position.takeProfitPrice,
+    stopLossPrice: position.stopLossPrice,
+    positionId: position.id,
+    regime: data.metadata?.regime ?? '',
+    balance: balance
+  });
+
   return { ok: true, balance, position, positions: currentPositions, balanceBefore, balanceAfter: balance };
 }
 
@@ -330,6 +344,22 @@ export function closePosition(positionId: string, exitPrice: number, reason: 'ta
     maxUnrealizedPnLPercent: position.metadata?.maxUnrealizedPnLPercent,
     worstUnrealizedPnL: position.metadata?.worstUnrealizedPnL,
     worstUnrealizedPnLPercent: position.metadata?.worstUnrealizedPnLPercent
+  });
+
+  notifyPositionClose({
+    symbol: position.symbol,
+    side: position.side,
+    entryPrice: position.entryPrice,
+    exitPrice,
+    quantity: position.quantity,
+    notional: position.notional,
+    realizedPnL,
+    netPnL,
+    netPnLPercent,
+    reason,
+    positionAgeSeconds,
+    balance: balance,
+    positionId: position.id
   });
 
   return { ok: true, balance, lastClosedTrade, positions: currentPositions, balanceBefore, balanceAfter: balance };
