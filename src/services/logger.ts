@@ -1,13 +1,24 @@
 import fs from 'fs';
 import path from 'path';
 
+const LOG_DIR = '/app/logs';
+
+function ensureDirExists() {
+  if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  }
+}
+
 function ensureFileExists(filePath: string, headers: string[]) {
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, headers.join(',') + '\n');
   }
 }
 
-function writeRow(filePath: string, row: Record<string, string | number | boolean | null>) {
+function writeRow(fileName: string, row: Record<string, string | number | boolean | null>) {
+  ensureDirExists();
+  
+  const filePath = path.join(LOG_DIR, fileName);
   const headers = Object.keys(row);
   ensureFileExists(filePath, headers);
   
