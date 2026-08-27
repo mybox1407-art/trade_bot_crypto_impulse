@@ -4,9 +4,9 @@ services:
     container_name: trade_bot_crypto_impulse
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3002:3002"
     environment:
-      - PORT=3001
+      - PORT=3002
       - NODE_ENV=production
     volumes:
       - ./logs:/app/logs
@@ -16,7 +16,7 @@ services:
       - ./trade_log.csv:/app/trade_log.csv
       - ./error_log.csv:/app/error_log.csv
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
