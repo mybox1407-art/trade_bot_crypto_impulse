@@ -1,4 +1,5 @@
 import { MAX_RISK_PER_TRADE, STARTING_BALANCE, TRADE_FEE_RATE } from './strategy';
+import { logTrade } from './logger';
 
 export const POSITION_PERCENT = 0.30;
 export const MAX_PARALLEL_POSITIONS = 3;
@@ -210,6 +211,24 @@ export function closePosition(positionId: string, exitPrice: number, reason: 'ta
 
   balance = balance + netPnL;
   currentPositions = currentPositions.filter(openPosition => openPosition.id !== positionId);
+
+  logTrade({
+    timestamp: new Date().toISOString(),
+    tradeId: position.id,
+    symbol: position.symbol,
+    side: position.side,
+    entryPrice: position.entryPrice,
+    exitPrice,
+    quantity: position.quantity,
+    notional: position.notional,
+    realizedPnL,
+    entryFee: position.entryFee,
+    exitFee,
+    totalFee,
+    netPnL,
+    reason,
+    balanceAfter: balance
+  });
 
   return { ok: true, balance, lastClosedTrade, positions: currentPositions };
 }
