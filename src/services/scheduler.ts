@@ -26,6 +26,7 @@ async function checkSignals() {
     try {
       const result = await runBotOnce(symbol, '15m');
 
+      // Type guard - проверяем ready и сужаем тип
       if (!result.ready) {
         console.log(`[${new Date().toISOString()}] ${symbol}: Not ready - ${result.reason}`);
         logSignalCheck({
@@ -60,7 +61,17 @@ async function checkSignals() {
         continue;
       }
 
-      const { buy, sell, side, price, takeProfitPrice, stopLossPrice, positionSize, regime, indicators } = result;
+      // Теперь TypeScript знает что result.ready === true, но нужно явно указать тип
+      const buy = (result as any).buy as boolean;
+      const sell = (result as any).sell as boolean;
+      const side = (result as any).side as 'long' | 'short' | 'none';
+      const price = (result as any).price as number;
+      const takeProfitPrice = (result as any).takeProfitPrice as number | null;
+      const stopLossPrice = (result as any).stopLossPrice as number | null;
+      const positionSize = (result as any).positionSize as number | null;
+      const regime = (result as any).regime as string;
+      const indicators = (result as any).indicators as any;
+      
       const signalTriggered = buy || sell;
 
       if (signalTriggered) {
