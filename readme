@@ -7,7 +7,7 @@ npm install -D @types/protobufjs
 docker compose up -d --build
 npm install
 
-docker compose logs -f trade_bot_crypto_impulse
+docker compose logs -f trade_bot
 
 npx tsx src/backtest/downloadCandles.ts SOLUSDT 120 15m
 npx tsx src/backtest/downloadCandles.ts SOLUSDT 120 1m
