@@ -1,7 +1,7 @@
 {
   "name": "trade_bot_crypto_impulse",
   "version": "1.0.0",
-  "description": "",
+  "description": "Autonomous crypto impulse trading bot",
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
@@ -11,7 +11,7 @@
     "download:candles": "tsx src/backtest/downloadCandles.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["crypto", "trading", "bot", "autonomous"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
