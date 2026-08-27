@@ -20,3 +20,7 @@ export function logSignalCheck(row: Record<string, string | number | boolean | n
 export function logTrade(row: Record<string, string | number | boolean | null>) {
   writeRow('trade_log.csv', row);
 }
+
+export function logPositionCheck(row: Record<string, string | number | boolean | null>) {
+  writeRow('position_check_log.csv', row);
+}
