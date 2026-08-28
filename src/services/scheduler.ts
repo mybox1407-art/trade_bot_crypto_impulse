@@ -14,7 +14,8 @@ import {
   updatePositionMetadata
 } from './positionState';
 import { logSignalCheck, logPositionCheck, logError } from './logger';
-import { notifyStartup, notifyError, notifySignalCheck } from './telegram';
+import { notifyStartup, notifyError } from './telegram';
+import axios from 'axios';
 
 let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
@@ -35,7 +36,16 @@ async function checkSignals() {
         continue;
       }
 
-      const { buy, sell, side, price, takeProfitPrice, stopLossPrice, positionSize, regime, indicators } = result;
+      // Type assertion - теперь TypeScript знает что result.ready === true
+      const buy = (result as any).buy as boolean;
+      const sell = (result as any).sell as boolean;
+      const side = (result as any).side as 'long' | 'short' | 'none';
+      const price = (result as any).price as number;
+      const takeProfitPrice = (result as any).takeProfitPrice as number | null;
+      const stopLossPrice = (result as any).stopLossPrice as number | null;
+      const positionSize = (result as any).positionSize as number | null;
+      const regime = (result as any).regime as string;
+      const indicators = (result as any).indicators as any;
       
       console.log(`\n[${new Date().toISOString()}] 🔍 ${symbol} ANALYSIS:`);
       console.log(`   Price: ${price.toFixed(4)}`);
@@ -101,16 +111,16 @@ async function checkSignals() {
             calculatedQuantity
           });
 
-          if (openResult.ok) {
+          if (openResult.ok && openResult.position) {
             console.log(`[${new Date().toISOString()}] ✅ ${symbol}: POSITION OPENED!`);
-            console.log(`   Position ID: ${openResult.position?.id}`);
-            console.log(`   Quantity: ${openResult.position?.quantity.toFixed(4)}`);
-            console.log(`   Notional: $${openResult.position?.notional.toFixed(2)}`);
+            console.log(`   Position ID: ${openResult.position.id}`);
+            console.log(`   Quantity: ${openResult.position.quantity.toFixed(4)}`);
+            console.log(`   Notional: $${openResult.position.notional.toFixed(2)}`);
             console.log(`   Balance: $${openResult.balance.toFixed(2)}`);
             signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: 'Position opened' });
           } else {
             console.log(`[${new Date().toISOString()}] ❌ ${symbol}: FAILED TO OPEN - ${openResult.message}`);
-            signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: openResult.message });
+            signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: openResult.message || 'Unknown error' });
           }
         }
       } else {
@@ -223,15 +233,18 @@ ${new Date().toISOString()}`;
 
     // Отправляем только если есть сигналы или все пары без сигналов
     if (signalsCount > 0 || noSignalCount === TRADING_PAIRS.length) {
-      const axios = require('axios');
-      const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-      
       try {
-        await axios.post(url, {
-          chat_id: process.env.TELEGRAM_CHAT_ID,
-          text: summaryMessage
-        });
-        console.log(`[${new Date().toISOString()}] 📱 Telegram summary sent`);
+        const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
+        const telegramChatId = process.env.TELEGRAM_CHAT_ID || '';
+        
+        if (telegramToken && telegramChatId) {
+          const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
+          await axios.post(url, {
+            chat_id: telegramChatId,
+            text: summaryMessage
+          });
+          console.log(`[${new Date().toISOString()}] 📱 Telegram summary sent`);
+        }
       } catch (err) {
         console.error(`[${new Date().toISOString()}] Failed to send summary: ${err instanceof Error ? err.message : 'Unknown'}`);
       }
@@ -295,10 +308,11 @@ async function checkPositions() {
       if (hitTakeProfit) {
         console.log(`[${new Date().toISOString()}] 🎯 ${position.symbol}: HIT TAKE PROFIT!`);
         const result = closePosition(position.id, currentPrice, 'take_profit');
-        if (result.ok) {
+        if (result.ok && result.balance !== undefined) {
           console.log(`[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT TP`);
           console.log(`   Exit: ${currentPrice.toFixed(4)}`);
-          console.log(`   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)} (${((result.lastClosedTrade?.netPnL || 0) / position.notional * 100).toFixed(2)}%)`);
+          const pnlPercent = result.lastClosedTrade ? (result.lastClosedTrade.netPnL / position.notional * 100) : 0;
+          console.log(`   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)} (${pnlPercent.toFixed(2)}%)`);
           console.log(`   Balance: $${result.balance.toFixed(2)}`);
         } else {
           console.error(`[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`);
@@ -319,7 +333,7 @@ async function checkPositions() {
       } else if (hitStopLoss) {
         console.log(`[${new Date().toISOString()}] 🛑 ${position.symbol}: HIT STOP LOSS!`);
         const result = closePosition(position.id, currentPrice, 'stop_loss');
-        if (result.ok) {
+        if (result.ok && result.balance !== undefined) {
           console.log(`[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT SL`);
           console.log(`   Exit: ${currentPrice.toFixed(4)}`);
           console.log(`   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)}`);
