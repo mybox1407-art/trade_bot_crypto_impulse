@@ -14,7 +14,7 @@ import {
   updatePositionMetadata
 } from './positionState';
 import { logSignalCheck, logPositionCheck, logError } from './logger';
-import { notifyStartup, notifyError } from './telegram';
+import { notifyStartup, notifyError, notifySignalCheck } from './telegram';
 
 let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
@@ -23,12 +23,15 @@ async function checkSignals() {
   console.log(`\n[${new Date().toISOString()}] ========== SIGNAL CHECK START ==========`);
   console.log(`[${new Date().toISOString()}] Pairs: ${TRADING_PAIRS.length}, Open positions: ${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS}`);
 
+  const signalResults = [];
+
   for (const symbol of TRADING_PAIRS) {
     try {
       const result = await runBotOnce(symbol, '15m');
 
       if (!result.ready) {
         console.log(`[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${result.reason}`);
+        signalResults.push({ symbol, regime: 'unknown', hasSignal: false, reason: result.reason });
         continue;
       }
 
@@ -44,6 +47,8 @@ async function checkSignals() {
       console.log(`   BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)}`);
       console.log(`   Signal: ${buy ? 'BUY' : sell ? 'SELL' : 'NONE'}`);
 
+      let signalReason = '';
+
       if (buy || sell) {
         console.log(`\n[${new Date().toISOString()}] 🚨 ${symbol}: SIGNAL DETECTED!`);
         console.log(`   Side: ${side.toUpperCase()}`);
@@ -51,13 +56,17 @@ async function checkSignals() {
         console.log(`   TP: ${takeProfitPrice?.toFixed(4)}, SL: ${stopLossPrice?.toFixed(4)}`);
         console.log(`   Position Size: ${positionSize?.toFixed(4)}`);
 
+        signalReason = 'Signal detected';
+
         if (hasOpenPosition(symbol)) {
           console.log(`[${new Date().toISOString()}] ⛔ ${symbol}: SKIPPED - position already open`);
+          signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: 'Position already open' });
           continue;
         }
 
         if (getOpenPositionsCount() >= MAX_PARALLEL_POSITIONS) {
           console.log(`[${new Date().toISOString()}] ⛔ ${symbol}: SKIPPED - max positions (${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS})`);
+          signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: 'Max positions reached' });
           continue;
         }
 
@@ -98,8 +107,10 @@ async function checkSignals() {
             console.log(`   Quantity: ${openResult.position?.quantity.toFixed(4)}`);
             console.log(`   Notional: $${openResult.position?.notional.toFixed(2)}`);
             console.log(`   Balance: $${openResult.balance.toFixed(2)}`);
+            signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: 'Position opened' });
           } else {
             console.log(`[${new Date().toISOString()}] ❌ ${symbol}: FAILED TO OPEN - ${openResult.message}`);
+            signalResults.push({ symbol, regime, hasSignal: true, side, price, reason: openResult.message });
           }
         }
       } else {
@@ -107,34 +118,36 @@ async function checkSignals() {
         
         // Почему нет сигнала?
         if (regime === 'high_volatility') {
+          signalReason = `High volatility (ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(2)})`;
           console.log(`   Reason: HIGH_VOLATILITY regime (ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(4)}, BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`);
         } else if (regime === 'range') {
+          signalReason = `Range (ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)})`;
           console.log(`   Reason: RANGE regime (ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}, BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`);
-        } else if (regime === 'trend_up' || regime === 'trend_down') {
+        } else if (regime === 'trend_up') {
           const reasons = [];
-          if (!indicators?.macdCrossUp && !indicators?.macdCrossDown) {
-            reasons.push('No MACD cross');
-          }
-          if (regime === 'trend_up' && !indicators?.rsiBull) {
-            reasons.push(`RSI not bull (${indicators?.lastRsi?.toFixed(2)})`);
-          }
-          if (regime === 'trend_down' && !indicators?.rsiBear) {
-            reasons.push(`RSI not bear (${indicators?.lastRsi?.toFixed(2)})`);
-          }
-          if (regime === 'trend_up' && price <= (indicators?.regimeIndicators?.ema200 ?? 0)) {
-            reasons.push('Price below EMA200');
-          }
-          if (regime === 'trend_down' && price >= (indicators?.regimeIndicators?.ema200 ?? 0)) {
-            reasons.push('Price above EMA200');
-          }
-          console.log(`   Reason: ${reasons.join(', ') || 'Other conditions not met'}`);
+          if (!indicators?.macdCrossUp && !indicators?.macdCrossDown) reasons.push('No MACD cross');
+          if (!indicators?.rsiBull) reasons.push(`RSI not bull (${indicators?.lastRsi?.toFixed(2)})`);
+          if (price <= (indicators?.regimeIndicators?.ema200 ?? 0)) reasons.push('Price below EMA200');
+          signalReason = reasons.join(', ') || 'Trend up - trades disabled';
+          console.log(`   Reason: ${signalReason}`);
+        } else if (regime === 'trend_down') {
+          const reasons = [];
+          if (!indicators?.macdCrossUp && !indicators?.macdCrossDown) reasons.push('No MACD cross');
+          if (!indicators?.rsiBear) reasons.push(`RSI not bear (${indicators?.lastRsi?.toFixed(2)})`);
+          if (price >= (indicators?.regimeIndicators?.ema200 ?? 0)) reasons.push('Price above EMA200');
+          signalReason = reasons.join(', ') || 'No MACD cross down';
+          console.log(`   Reason: ${signalReason}`);
         } else if (regime === 'breakout_watch') {
+          signalReason = 'Waiting for BB breakout';
           console.log(`   Reason: BREAKOUT_WATCH - waiting for BB breakout`);
           console.log(`   BB Upper: ${indicators?.bbUpper?.toFixed(4)}, BB Lower: ${indicators?.bbLower?.toFixed(4)}`);
           console.log(`   Price vs BB: ${price > (indicators?.bbUpper ?? 0) ? 'ABOVE' : price < (indicators?.bbLower ?? 0) ? 'BELOW' : 'INSIDE'}`);
         } else {
+          signalReason = 'Unknown regime';
           console.log(`   Reason: UNKNOWN regime or indicators not ready`);
         }
+
+        signalResults.push({ symbol, regime, hasSignal: false, reason: signalReason });
       }
 
       logSignalCheck({
@@ -182,6 +195,46 @@ async function checkSignals() {
         symbol,
         error: String(errorMsg)
       });
+      signalResults.push({ symbol, regime: 'error', hasSignal: false, reason: errorMsg });
+    }
+  }
+
+  // Отправить сводку в Telegram
+  if (signalResults.length > 0) {
+    const signalsCount = signalResults.filter(r => r.hasSignal).length;
+    const noSignalCount = signalResults.filter(r => !r.hasSignal).length;
+    
+    const summaryText = signalResults.map(r => {
+      const emoji = r.hasSignal 
+        ? (r.side === 'long' ? '🟢' : '🔴') 
+        : '⏳';
+      const signalText = r.hasSignal 
+        ? `${r.side?.toUpperCase()} @ ${r.price?.toFixed(4)}`
+        : 'No signal';
+      return `${emoji} ${r.symbol}: ${r.regime} | ${signalText} | ${r.reason}`;
+    }).join('\n');
+
+    const summaryMessage = `📊 Signal Check Summary
+
+${summaryText}
+
+Signals: ${signalsCount} | No signals: ${noSignalCount}
+${new Date().toISOString()}`;
+
+    // Отправляем только если есть сигналы или все пары без сигналов
+    if (signalsCount > 0 || noSignalCount === TRADING_PAIRS.length) {
+      const axios = require('axios');
+      const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+      
+      try {
+        await axios.post(url, {
+          chat_id: process.env.TELEGRAM_CHAT_ID,
+          text: summaryMessage
+        });
+        console.log(`[${new Date().toISOString()}] 📱 Telegram summary sent`);
+      } catch (err) {
+        console.error(`[${new Date().toISOString()}] Failed to send summary: ${err instanceof Error ? err.message : 'Unknown'}`);
+      }
     }
   }
 
