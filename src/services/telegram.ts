@@ -164,3 +164,33 @@ ${new Date().toISOString()}`;
     text
   });
 }
+
+export function notifySignalCheck(data: {
+  symbol: string;
+  regime: string;
+  hasSignal: boolean;
+  side?: 'long' | 'short';
+  price?: number;
+  reason?: string;
+}) {
+  const emoji = data.hasSignal 
+    ? (data.side === 'long' ? '🟢' : '🔴') 
+    : '⏳';
+  
+  const signalText = data.hasSignal 
+    ? `${data.side?.toUpperCase()} @ ${data.price?.toFixed(4)}`
+    : 'No signal';
+
+  const text = `${emoji} ${data.symbol}
+
+Regime: ${data.regime}
+Signal: ${signalText}
+Reason: ${data.reason ?? 'Conditions not met'}
+
+${new Date().toISOString()}`;
+
+  return sendMessage({
+    chat_id: env.telegramChatId,
+    text
+  });
+}
