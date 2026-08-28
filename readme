@@ -1,3 +1,5 @@
+cd trade_bot_crypto_impulse
+docker compose down
 cd ~
 rm -rf trade_bot_crypto_impulse
 git clone https://github.com/mybox1407-art/trade_bot_crypto_impulse.git
