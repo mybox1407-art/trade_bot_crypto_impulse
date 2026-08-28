@@ -20,128 +20,44 @@ let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
 
 async function checkSignals() {
-  console.log(`[${new Date().toISOString()}] Starting signal check for ${TRADING_PAIRS.length} pairs...`);
+  console.log(`\n[${new Date().toISOString()}] ========== SIGNAL CHECK START ==========`);
+  console.log(`[${new Date().toISOString()}] Pairs: ${TRADING_PAIRS.length}, Open positions: ${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS}`);
 
   for (const symbol of TRADING_PAIRS) {
     try {
       const result = await runBotOnce(symbol, '15m');
 
       if (!result.ready) {
-        console.log(`[${new Date().toISOString()}] ${symbol}: Not ready - ${result.reason}`);
-        logSignalCheck({
-          timestamp: new Date().toISOString(),
-          symbol,
-          timeframe: '15m',
-          side: 'none',
-          price: 0,
-          regime: 'unknown',
-          takeProfitPrice: null,
-          stopLossPrice: null,
-          positionSize: null,
-          macdCrossUp: false,
-          macdCrossDown: false,
-          lastRsi: 0,
-          lastAtr: 0,
-          rsiBull: false,
-          rsiBear: false,
-          bbUpper: 0,
-          bbMiddle: 0,
-          bbLower: 0,
-          adx: 0,
-          adxRising: false,
-          ema20: 0,
-          ema50: 0,
-          ema200: 0,
-          bbWidth: 0,
-          atrPct: 0,
-          signalTriggered: false,
-          positionOpened: false
-        });
+        console.log(`[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${result.reason}`);
         continue;
       }
 
-      const buy = (result as any).buy as boolean;
-      const sell = (result as any).sell as boolean;
-      const side = (result as any).side as 'long' | 'short' | 'none';
-      const price = (result as any).price as number;
-      const takeProfitPrice = (result as any).takeProfitPrice as number | null;
-      const stopLossPrice = (result as any).stopLossPrice as number | null;
-      const positionSize = (result as any).positionSize as number | null;
-      const regime = (result as any).regime as string;
-      const indicators = (result as any).indicators as any;
+      const { buy, sell, side, price, takeProfitPrice, stopLossPrice, positionSize, regime, indicators } = result;
       
-      const signalTriggered = buy || sell;
+      console.log(`\n[${new Date().toISOString()}] 🔍 ${symbol} ANALYSIS:`);
+      console.log(`   Price: ${price.toFixed(4)}`);
+      console.log(`   Regime: ${regime}`);
+      console.log(`   MACD Cross Up: ${indicators?.macdCrossUp}, Down: ${indicators?.macdCrossDown}`);
+      console.log(`   RSI: ${indicators?.lastRsi?.toFixed(2)}`);
+      console.log(`   ATR: ${indicators?.lastAtr?.toFixed(4)}`);
+      console.log(`   ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}`);
+      console.log(`   BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)}`);
+      console.log(`   Signal: ${buy ? 'BUY' : sell ? 'SELL' : 'NONE'}`);
 
-      if (signalTriggered) {
-        console.log(`[${new Date().toISOString()}] ${symbol}: Signal detected - ${side.toUpperCase()} @ ${price}, regime: ${regime}`);
+      if (buy || sell) {
+        console.log(`\n[${new Date().toISOString()}] 🚨 ${symbol}: SIGNAL DETECTED!`);
+        console.log(`   Side: ${side.toUpperCase()}`);
+        console.log(`   Entry: ${price.toFixed(4)}`);
+        console.log(`   TP: ${takeProfitPrice?.toFixed(4)}, SL: ${stopLossPrice?.toFixed(4)}`);
+        console.log(`   Position Size: ${positionSize?.toFixed(4)}`);
 
         if (hasOpenPosition(symbol)) {
-          console.log(`[${new Date().toISOString()}] ${symbol}: Position already open, skipping`);
-          logSignalCheck({
-            timestamp: new Date().toISOString(),
-            symbol,
-            timeframe: '15m',
-            side,
-            price,
-            regime,
-            takeProfitPrice,
-            stopLossPrice,
-            positionSize,
-            macdCrossUp: indicators?.macdCrossUp ?? false,
-            macdCrossDown: indicators?.macdCrossDown ?? false,
-            lastRsi: indicators?.lastRsi ?? 0,
-            lastAtr: indicators?.lastAtr ?? 0,
-            rsiBull: indicators?.rsiBull ?? false,
-            rsiBear: indicators?.rsiBear ?? false,
-            bbUpper: indicators?.bbUpper ?? 0,
-            bbMiddle: indicators?.bbMiddle ?? 0,
-            bbLower: indicators?.bbLower ?? 0,
-            adx: indicators?.regimeIndicators?.adx ?? 0,
-            adxRising: indicators?.regimeIndicators?.adxRising ?? false,
-            ema20: indicators?.regimeIndicators?.ema20 ?? 0,
-            ema50: indicators?.regimeIndicators?.ema50 ?? 0,
-            ema200: indicators?.regimeIndicators?.ema200 ?? 0,
-            bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
-            atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
-            signalTriggered: true,
-            positionOpened: false,
-            openPositionError: 'position_already_open'
-          });
+          console.log(`[${new Date().toISOString()}] ⛔ ${symbol}: SKIPPED - position already open`);
           continue;
         }
 
         if (getOpenPositionsCount() >= MAX_PARALLEL_POSITIONS) {
-          console.log(`[${new Date().toISOString()}] ${symbol}: Max positions (${MAX_PARALLEL_POSITIONS}) reached, skipping`);
-          logSignalCheck({
-            timestamp: new Date().toISOString(),
-            symbol,
-            timeframe: '15m',
-            side,
-            price,
-            regime,
-            takeProfitPrice,
-            stopLossPrice,
-            positionSize,
-            macdCrossUp: indicators?.macdCrossUp ?? false,
-            macdCrossDown: indicators?.macdCrossDown ?? false,
-            lastRsi: indicators?.lastRsi ?? 0,
-            lastAtr: indicators?.lastAtr ?? 0,
-            rsiBull: indicators?.rsiBull ?? false,
-            rsiBear: indicators?.rsiBear ?? false,
-            bbUpper: indicators?.bbUpper ?? 0,
-            bbMiddle: indicators?.bbMiddle ?? 0,
-            bbLower: indicators?.bbLower ?? 0,
-            adx: indicators?.regimeIndicators?.adx ?? 0,
-            adxRising: indicators?.regimeIndicators?.adxRising ?? false,
-            ema20: indicators?.regimeIndicators?.ema20 ?? 0,
-            ema50: indicators?.regimeIndicators?.ema50 ?? 0,
-            ema200: indicators?.regimeIndicators?.ema200 ?? 0,
-            bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
-            atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
-            signalTriggered: true,
-            positionOpened: false,
-            openPositionError: 'max_positions_reached'
-          });
+          console.log(`[${new Date().toISOString()}] ⛔ ${symbol}: SKIPPED - max positions (${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS})`);
           continue;
         }
 
@@ -177,119 +93,99 @@ async function checkSignals() {
           });
 
           if (openResult.ok) {
-            console.log(`[${new Date().toISOString()}] ${symbol}: Position opened - ${side} @ ${price}, TP: ${takeProfitPrice}, SL: ${stopLossPrice}`);
-            logSignalCheck({
-              timestamp: new Date().toISOString(),
-              symbol,
-              timeframe: '15m',
-              side,
-              price,
-              regime,
-              takeProfitPrice,
-              stopLossPrice,
-              positionSize,
-              macdCrossUp: indicators?.macdCrossUp ?? false,
-              macdCrossDown: indicators?.macdCrossDown ?? false,
-              lastRsi: indicators?.lastRsi ?? 0,
-              lastAtr: indicators?.lastAtr ?? 0,
-              rsiBull: indicators?.rsiBull ?? false,
-              rsiBear: indicators?.rsiBear ?? false,
-              bbUpper: indicators?.bbUpper ?? 0,
-              bbMiddle: indicators?.bbMiddle ?? 0,
-              bbLower: indicators?.bbLower ?? 0,
-              adx: indicators?.regimeIndicators?.adx ?? 0,
-              adxRising: indicators?.regimeIndicators?.adxRising ?? false,
-              ema20: indicators?.regimeIndicators?.ema20 ?? 0,
-              ema50: indicators?.regimeIndicators?.ema50 ?? 0,
-              ema200: indicators?.regimeIndicators?.ema200 ?? 0,
-              bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
-              atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
-              signalTriggered: true,
-              positionOpened: true
-            });
+            console.log(`[${new Date().toISOString()}] ✅ ${symbol}: POSITION OPENED!`);
+            console.log(`   Position ID: ${openResult.position?.id}`);
+            console.log(`   Quantity: ${openResult.position?.quantity.toFixed(4)}`);
+            console.log(`   Notional: $${openResult.position?.notional.toFixed(2)}`);
+            console.log(`   Balance: $${openResult.balance.toFixed(2)}`);
           } else {
-            console.error(`[${new Date().toISOString()}] ${symbol}: Failed to open position - ${openResult.message}`);
-            logSignalCheck({
-              timestamp: new Date().toISOString(),
-              symbol,
-              timeframe: '15m',
-              side,
-              price,
-              regime,
-              takeProfitPrice,
-              stopLossPrice,
-              positionSize,
-              macdCrossUp: indicators?.macdCrossUp ?? false,
-              macdCrossDown: indicators?.macdCrossDown ?? false,
-              lastRsi: indicators?.lastRsi ?? 0,
-              lastAtr: indicators?.lastAtr ?? 0,
-              rsiBull: indicators?.rsiBull ?? false,
-              rsiBear: indicators?.rsiBear ?? false,
-              bbUpper: indicators?.bbUpper ?? 0,
-              bbMiddle: indicators?.bbMiddle ?? 0,
-              bbLower: indicators?.bbLower ?? 0,
-              adx: indicators?.regimeIndicators?.adx ?? 0,
-              adxRising: indicators?.regimeIndicators?.adxRising ?? false,
-              ema20: indicators?.regimeIndicators?.ema20 ?? 0,
-              ema50: indicators?.regimeIndicators?.ema50 ?? 0,
-              ema200: indicators?.regimeIndicators?.ema200 ?? 0,
-              bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
-              atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
-              signalTriggered: true,
-              positionOpened: false,
-              openPositionError: openResult.message
-            });
+            console.log(`[${new Date().toISOString()}] ❌ ${symbol}: FAILED TO OPEN - ${openResult.message}`);
           }
         }
       } else {
-        console.log(`[${new Date().toISOString()}] ${symbol}: No signal - regime: ${regime}`);
-        logSignalCheck({
-          timestamp: new Date().toISOString(),
-          symbol,
-          timeframe: '15m',
-          side: 'none',
-          price: price ?? 0,
-          regime: regime ?? 'unknown',
-          takeProfitPrice: null,
-          stopLossPrice: null,
-          positionSize: null,
-          macdCrossUp: indicators?.macdCrossUp ?? false,
-          macdCrossDown: indicators?.macdCrossDown ?? false,
-          lastRsi: indicators?.lastRsi ?? 0,
-          lastAtr: indicators?.lastAtr ?? 0,
-          rsiBull: indicators?.rsiBull ?? false,
-          rsiBear: indicators?.rsiBear ?? false,
-          bbUpper: indicators?.bbUpper ?? 0,
-          bbMiddle: indicators?.bbMiddle ?? 0,
-          bbLower: indicators?.bbLower ?? 0,
-          adx: indicators?.regimeIndicators?.adx ?? 0,
-          adxRising: indicators?.regimeIndicators?.adxRising ?? false,
-          ema20: indicators?.regimeIndicators?.ema20 ?? 0,
-          ema50: indicators?.regimeIndicators?.ema50 ?? 0,
-          ema200: indicators?.regimeIndicators?.ema200 ?? 0,
-          bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
-          atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
-          signalTriggered: false,
-          positionOpened: false
-        });
+        console.log(`[${new Date().toISOString()}] ⏭ ${symbol}: NO SIGNAL`);
+        
+        // Почему нет сигнала?
+        if (regime === 'high_volatility') {
+          console.log(`   Reason: HIGH_VOLATILITY regime (ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(4)}, BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`);
+        } else if (regime === 'range') {
+          console.log(`   Reason: RANGE regime (ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}, BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`);
+        } else if (regime === 'trend_up' || regime === 'trend_down') {
+          const reasons = [];
+          if (!indicators?.macdCrossUp && !indicators?.macdCrossDown) {
+            reasons.push('No MACD cross');
+          }
+          if (regime === 'trend_up' && !indicators?.rsiBull) {
+            reasons.push(`RSI not bull (${indicators?.lastRsi?.toFixed(2)})`);
+          }
+          if (regime === 'trend_down' && !indicators?.rsiBear) {
+            reasons.push(`RSI not bear (${indicators?.lastRsi?.toFixed(2)})`);
+          }
+          if (regime === 'trend_up' && price <= (indicators?.regimeIndicators?.ema200 ?? 0)) {
+            reasons.push('Price below EMA200');
+          }
+          if (regime === 'trend_down' && price >= (indicators?.regimeIndicators?.ema200 ?? 0)) {
+            reasons.push('Price above EMA200');
+          }
+          console.log(`   Reason: ${reasons.join(', ') || 'Other conditions not met'}`);
+        } else if (regime === 'breakout_watch') {
+          console.log(`   Reason: BREAKOUT_WATCH - waiting for BB breakout`);
+          console.log(`   BB Upper: ${indicators?.bbUpper?.toFixed(4)}, BB Lower: ${indicators?.bbLower?.toFixed(4)}`);
+          console.log(`   Price vs BB: ${price > (indicators?.bbUpper ?? 0) ? 'ABOVE' : price < (indicators?.bbLower ?? 0) ? 'BELOW' : 'INSIDE'}`);
+        } else {
+          console.log(`   Reason: UNKNOWN regime or indicators not ready`);
+        }
       }
+
+      logSignalCheck({
+        timestamp: new Date().toISOString(),
+        symbol,
+        timeframe: '15m',
+        side: buy || sell ? side : 'none',
+        price: price ?? 0,
+        regime: regime ?? 'unknown',
+        takeProfitPrice: takeProfitPrice ?? null,
+        stopLossPrice: stopLossPrice ?? null,
+        positionSize: positionSize ?? null,
+        macdCrossUp: indicators?.macdCrossUp ?? false,
+        macdCrossDown: indicators?.macdCrossDown ?? false,
+        lastRsi: indicators?.lastRsi ?? 0,
+        lastAtr: indicators?.lastAtr ?? 0,
+        rsiBull: indicators?.rsiBull ?? false,
+        rsiBear: indicators?.rsiBear ?? false,
+        bbUpper: indicators?.bbUpper ?? 0,
+        bbMiddle: indicators?.bbMiddle ?? 0,
+        bbLower: indicators?.bbLower ?? 0,
+        adx: indicators?.regimeIndicators?.adx ?? 0,
+        adxRising: indicators?.regimeIndicators?.adxRising ?? false,
+        ema20: indicators?.regimeIndicators?.ema20 ?? 0,
+        ema50: indicators?.regimeIndicators?.ema50 ?? 0,
+        ema200: indicators?.regimeIndicators?.ema200 ?? 0,
+        bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
+        atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
+        signalTriggered: buy || sell,
+        positionOpened: false
+      });
+
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[${new Date().toISOString()}] ${symbol}: Error during signal check - ${errorMsg}`);
+      console.error(`[${new Date().toISOString()}] 💥 ${symbol}: ERROR - ${errorMsg}`);
       logError({
         timestamp: new Date().toISOString(),
         context: 'signal_check',
         symbol,
-        error: errorMsg,
-        stack: error instanceof Error ? error.stack : undefined
+        error: String(errorMsg),
+        stack: undefined
       });
       notifyError({
         context: 'signal_check',
-        symbol: symbol,
+        symbol,
         error: String(errorMsg)
       });
     }
   }
+
+  console.log(`[${new Date().toISOString()}] ========== SIGNAL CHECK END ==========\n`);
 }
 
 async function checkPositions() {
@@ -299,7 +195,8 @@ async function checkPositions() {
     return;
   }
 
-  console.log(`[${new Date().toISOString()}] Checking ${positions.length} open position(s)...`);
+  console.log(`\n[${new Date().toISOString()}] ========== POSITION CHECK START ==========`);
+  console.log(`[${new Date().toISOString()}] Checking ${positions.length} position(s)...`);
 
   for (const position of positions) {
     try {
@@ -335,15 +232,63 @@ async function checkPositions() {
       const now = new Date().getTime();
       const positionAgeSeconds = Math.floor((now - openedAt) / 1000);
 
-      if (position.metadata) {
-        if (position.metadata.maxUnrealizedPnL === undefined || unrealizedPnL > position.metadata.maxUnrealizedPnL) {
-          position.metadata.maxUnrealizedPnL = unrealizedPnL;
-          position.metadata.maxUnrealizedPnLPercent = unrealizedPnLPercent;
+      console.log(`\n[${new Date().toISOString()}] 📊 ${position.symbol} (${position.side.toUpperCase()}):`);
+      console.log(`   Entry: ${position.entryPrice.toFixed(4)}, Current: ${currentPrice.toFixed(4)}`);
+      console.log(`   TP: ${position.takeProfitPrice.toFixed(4)} (${distanceToTPPercent.toFixed(2)}% away)`);
+      console.log(`   SL: ${position.stopLossPrice.toFixed(4)} (${distanceToSLPercent.toFixed(2)}% away)`);
+      console.log(`   Unrealized PnL: $${unrealizedPnL.toFixed(2)} (${unrealizedPnLPercent.toFixed(2)}%)`);
+      console.log(`   Age: ${Math.floor(positionAgeSeconds / 60)}m ${positionAgeSeconds % 60}s`);
+
+      if (hitTakeProfit) {
+        console.log(`[${new Date().toISOString()}] 🎯 ${position.symbol}: HIT TAKE PROFIT!`);
+        const result = closePosition(position.id, currentPrice, 'take_profit');
+        if (result.ok) {
+          console.log(`[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT TP`);
+          console.log(`   Exit: ${currentPrice.toFixed(4)}`);
+          console.log(`   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)} (${((result.lastClosedTrade?.netPnL || 0) / position.notional * 100).toFixed(2)}%)`);
+          console.log(`   Balance: $${result.balance.toFixed(2)}`);
+        } else {
+          console.error(`[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`);
+          logError({
+            timestamp: new Date().toISOString(),
+            context: 'close_position',
+            symbol: position.symbol,
+            positionId: position.id,
+            error: String(result.message),
+            stack: undefined
+          });
+          notifyError({
+            context: 'close_position',
+            symbol: position.symbol,
+            error: String(result.message)
+          });
         }
-        if (position.metadata.worstUnrealizedPnL === undefined || unrealizedPnL < position.metadata.worstUnrealizedPnL) {
-          position.metadata.worstUnrealizedPnL = unrealizedPnL;
-          position.metadata.worstUnrealizedPnLPercent = unrealizedPnLPercent;
+      } else if (hitStopLoss) {
+        console.log(`[${new Date().toISOString()}] 🛑 ${position.symbol}: HIT STOP LOSS!`);
+        const result = closePosition(position.id, currentPrice, 'stop_loss');
+        if (result.ok) {
+          console.log(`[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT SL`);
+          console.log(`   Exit: ${currentPrice.toFixed(4)}`);
+          console.log(`   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)}`);
+          console.log(`   Balance: $${result.balance.toFixed(2)}`);
+        } else {
+          console.error(`[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`);
+          logError({
+            timestamp: new Date().toISOString(),
+            context: 'close_position',
+            symbol: position.symbol,
+            positionId: position.id,
+            error: String(result.message),
+            stack: undefined
+          });
+          notifyError({
+            context: 'close_position',
+            symbol: position.symbol,
+            error: String(result.message)
+          });
         }
+      } else {
+        console.log(`[${new Date().toISOString()}] ⏳ ${position.symbol}: HOLDING`);
       }
 
       logPositionCheck({
@@ -367,59 +312,16 @@ async function checkPositions() {
         positionAgeSeconds
       });
 
-      if (hitTakeProfit) {
-        const result = closePosition(position.id, currentPrice, 'take_profit');
-        if (result.ok) {
-          console.log(`[${new Date().toISOString()}] ${position.symbol}: Position closed at TP - exit: ${currentPrice}, PnL: ${result.lastClosedTrade?.netPnL}`);
-        } else {
-          console.error(`[${new Date().toISOString()}] ${position.symbol}: Failed to close at TP - ${result.message}`);
-          logError({
-            timestamp: new Date().toISOString(),
-            context: 'close_position',
-            symbol: position.symbol,
-            positionId: position.id,
-            error: String(result.message),
-            stack: undefined
-          });
-          notifyError({
-            context: 'close_position',
-            symbol: position.symbol,
-            error: String(result.message)
-          });
-        }
-      } else if (hitStopLoss) {
-        const result = closePosition(position.id, currentPrice, 'stop_loss');
-        if (result.ok) {
-          console.log(`[${new Date().toISOString()}] ${position.symbol}: Position closed at SL - exit: ${currentPrice}, PnL: ${result.lastClosedTrade?.netPnL}`);
-        } else {
-          console.error(`[${new Date().toISOString()}] ${position.symbol}: Failed to close at SL - ${result.message}`);
-          logError({
-            timestamp: new Date().toISOString(),
-            context: 'close_position',
-            symbol: position.symbol,
-            positionId: position.id,
-            error: String(result.message),
-            stack: undefined
-          });
-          notifyError({
-            context: 'close_position',
-            symbol: position.symbol,
-            error: String(result.message)
-          });
-        }
-      } else {
-        console.log(`[${new Date().toISOString()}] ${position.symbol}: Holding - current: ${currentPrice}, TP: ${position.takeProfitPrice}, SL: ${position.stopLossPrice}, unrealized PnL: ${unrealizedPnL.toFixed(2)} (${unrealizedPnLPercent.toFixed(2)}%)`);
-      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[${new Date().toISOString()}] ${position.symbol}: Error checking position - ${errorMsg}`);
+      console.error(`[${new Date().toISOString()}] 💥 ${position.symbol}: ERROR - ${errorMsg}`);
       logError({
         timestamp: new Date().toISOString(),
         context: 'position_check',
         symbol: position.symbol,
         positionId: position.id,
         error: String(errorMsg),
-        stack: error instanceof Error ? error.stack : undefined
+        stack: undefined
       });
       notifyError({
         context: 'position_check',
@@ -428,13 +330,17 @@ async function checkPositions() {
       });
     }
   }
+
+  console.log(`[${new Date().toISOString()}] ========== POSITION CHECK END ==========\n`);
 }
 
 export function startScheduler() {
-  console.log(`[${new Date().toISOString()}] Starting scheduler...`);
+  console.log(`\n[${new Date().toISOString()}] 🚀 TRADING BOT STARTING...`);
+  console.log(`[${new Date().toISOString()}] Port: ${Number(process.env.PORT) || 3002}`);
   console.log(`[${new Date().toISOString()}] Signal check interval: ${SIGNAL_CHECK_INTERVAL_MS / 1000}s`);
   console.log(`[${new Date().toISOString()}] Position check interval: ${POSITION_CHECK_INTERVAL_MS / 1000}s`);
   console.log(`[${new Date().toISOString()}] Trading pairs: ${[...TRADING_PAIRS].join(', ')}`);
+  console.log(`[${new Date().toISOString()}] Max positions: ${MAX_PARALLEL_POSITIONS}\n`);
 
   notifyStartup({
     port: Number(process.env.PORT) || 3002,
@@ -451,7 +357,7 @@ export function startScheduler() {
 }
 
 export function stopScheduler() {
-  console.log(`[${new Date().toISOString()}] Stopping scheduler...`);
+  console.log(`\n[${new Date().toISOString()}] 🛑 Stopping scheduler...`);
 
   if (signalCheckInterval) {
     clearInterval(signalCheckInterval);
@@ -463,5 +369,5 @@ export function stopScheduler() {
     positionCheckInterval = null;
   }
 
-  console.log(`[${new Date().toISOString()}] Scheduler stopped`);
+  console.log(`[${new Date().toISOString()}] Scheduler stopped\n`);
 }
