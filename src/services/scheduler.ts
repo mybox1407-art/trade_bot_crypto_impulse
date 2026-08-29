@@ -250,18 +250,20 @@ async function checkSignals() {
         const result = await runBotOnce(symbol, '15m');
 
         if (!result.ready) {
+          const reason = result.reason ?? 'Strategy result is not ready';
+        
           console.log(
-            `[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${result.reason}`
+            `[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${reason}`
           );
-
+        
           signalResults.push({
             symbol,
             status: 'not_ready',
             regime: 'unknown',
             hasSignal: false,
-            reason: result.reason
+            reason
           });
-
+        
           continue;
         }
 
