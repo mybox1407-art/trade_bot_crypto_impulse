@@ -19,13 +19,20 @@ import {
   getPositionNotional,
   updatePositionMetadata
 } from './positionState';
+import { TRADE_FEE_RATE } from './strategy';
 import { logSignalCheck, logPositionCheck, logError } from './logger';
 import { notifyStartup, notifyError } from './telegram';
 import axios from 'axios';
 
 type SignalResult = {
   symbol: string;
-  status: 'signal' | 'no_signal' | 'position_open' | 'max_positions' | 'not_ready' | 'error';
+  status:
+    | 'signal'
+    | 'no_signal'
+    | 'position_open'
+    | 'max_positions'
+    | 'not_ready'
+    | 'error';
   regime: string;
   hasSignal: boolean;
   side?: 'long' | 'short' | 'none';
@@ -50,22 +57,28 @@ function formatOpenPositionsForTelegram() {
     return 'No open positions';
   }
 
-  return positions.map(position => {
-    const sideEmoji = position.side === 'long' ? '🟢' : '🔴';
+  return positions
+    .map(position => {
+      const sideEmoji = position.side === 'long' ? '🟢' : '🔴';
 
-    return [
-      `${sideEmoji} ${position.symbol}: ${position.side.toUpperCase()}`,
-      `Entry ${formatPrice(position.entryPrice)}`,
-      `TP ${formatPrice(position.takeProfitPrice)}`,
-      `SL ${formatPrice(position.stopLossPrice)}`,
-      `Notional $${position.notional.toFixed(2)}`
-    ].join(' | ');
-  }).join('\n');
+      return [
+        `${sideEmoji} ${position.symbol}: ${position.side.toUpperCase()}`,
+        `Entry ${formatPrice(position.entryPrice)}`,
+        `TP ${formatPrice(position.takeProfitPrice)}`,
+        `SL ${formatPrice(position.stopLossPrice)}`,
+        `Notional $${position.notional.toFixed(2)}`
+      ].join(' | ');
+    })
+    .join('\n');
 }
 
 async function sendTelegramSummary(signalResults: SignalResult[]) {
   const activeResults = signalResults.filter(
-    result => result.status === 'signal' || result.status === 'no_signal' || result.status === 'not_ready' || result.status === 'error'
+    result =>
+      result.status === 'signal' ||
+      result.status === 'no_signal' ||
+      result.status === 'not_ready' ||
+      result.status === 'error'
   );
 
   const signalsCount = signalResults.filter(
@@ -73,35 +86,44 @@ async function sendTelegramSummary(signalResults: SignalResult[]) {
   ).length;
 
   const noSignalCount = signalResults.filter(
-    result => result.status === 'no_signal' || result.status === 'not_ready'
+    result =>
+      result.status === 'no_signal' ||
+      result.status === 'not_ready'
   ).length;
 
   const openPositionsCount = getOpenPositionsCount();
+
   const errorCount = signalResults.filter(
     result => result.status === 'error'
   ).length;
 
-  const signalText = activeResults.length > 0
-    ? activeResults.map(result => {
-      if (result.status === 'error') {
-        return `❌ ${result.symbol}: ERROR | ${result.reason}`;
-      }
+  const signalText =
+    activeResults.length > 0
+      ? activeResults
+          .map(result => {
+            if (result.status === 'error') {
+              return `❌ ${result.symbol}: ERROR | ${result.reason}`;
+            }
 
-      if (result.status === 'not_ready') {
-        return `⚠️ ${result.symbol}: NOT READY | ${result.reason}`;
-      }
+            if (result.status === 'not_ready') {
+              return `⚠️ ${result.symbol}: NOT READY | ${result.reason}`;
+            }
 
-      if (result.status === 'signal') {
-        const emoji = result.side === 'long' ? '🟢' : '🔴';
-        const side = result.side?.toUpperCase() ?? 'SIGNAL';
-        const price = result.price != null ? ` @ ${formatPrice(result.price)}` : '';
+            if (result.status === 'signal') {
+              const emoji = result.side === 'long' ? '🟢' : '🔴';
+              const side = result.side?.toUpperCase() ?? 'SIGNAL';
+              const price =
+                result.price != null
+                  ? ` @ ${formatPrice(result.price)}`
+                  : '';
 
-        return `${emoji} ${result.symbol}: ${result.regime} | ${side}${price} | ${result.reason}`;
-      }
+              return `${emoji} ${result.symbol}: ${result.regime} | ${side}${price} | ${result.reason}`;
+            }
 
-      return `⏳ ${result.symbol}: ${result.regime} | No signal | ${result.reason}`;
-    }).join('\n')
-    : 'No free symbols to analyze';
+            return `⏳ ${result.symbol}: ${result.regime} | No signal | ${result.reason}`;
+          })
+          .join('\n')
+      : 'No free symbols to analyze';
 
   const summaryMessage = `📊 Signal Check Summary
 
@@ -118,17 +140,15 @@ ${signalText}
 Signals: ${signalsCount} | No signals: ${noSignalCount} | Open: ${openPositionsCount}/${MAX_PARALLEL_POSITIONS} | Errors: ${errorCount}
 ${new Date().toISOString()}`;
 
-  /**
-   * Не отправляем Telegram-сообщение, когда все тикеры уже открыты:
-   * нет новых сигналов, нет ошибок и нечего анализировать.
-   */
   const shouldSendSummary =
     signalsCount > 0 ||
     errorCount > 0 ||
     activeResults.length > 0;
 
   if (!shouldSendSummary) {
-    console.log(`[${new Date().toISOString()}] 📱 Telegram summary skipped — all positions are already open`);
+    console.log(
+      `[${new Date().toISOString()}] 📱 Telegram summary skipped — all positions are already open`
+    );
     return;
   }
 
@@ -137,7 +157,9 @@ ${new Date().toISOString()}`;
     const telegramChatId = process.env.TELEGRAM_CHAT_ID || '';
 
     if (!telegramToken || !telegramChatId) {
-      console.warn(`[${new Date().toISOString()}] ⚠️ Telegram summary skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing`);
+      console.warn(
+        `[${new Date().toISOString()}] ⚠️ Telegram summary skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing`
+      );
       return;
     }
 
@@ -160,20 +182,25 @@ ${new Date().toISOString()}`;
 
 async function checkSignals() {
   if (signalCheckRunning) {
-    console.warn(`[${new Date().toISOString()}] ⏭ SIGNAL CHECK SKIPPED — previous check is still running`);
+    console.warn(
+      `[${new Date().toISOString()}] ⏭ SIGNAL CHECK SKIPPED — previous check is still running`
+    );
     return;
   }
 
   signalCheckRunning = true;
 
   try {
-    console.log(`\n[${new Date().toISOString()}] ========== SIGNAL CHECK START ==========`);
+    console.log(
+      `\n[${new Date().toISOString()}] ========== SIGNAL CHECK START ==========`
+    );
+
     console.log(
       `[${new Date().toISOString()}] Pairs: ${TRADING_PAIRS.length}, ` +
-      `Open positions: ${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS}, ` +
-      `Equity: $${getBalance().toFixed(2)}, ` +
-      `Reserved: $${getReservedCapital().toFixed(2)}, ` +
-      `Available: $${getAvailableBalance().toFixed(2)}`
+        `Open positions: ${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS}, ` +
+        `Equity: $${getBalance().toFixed(2)}, ` +
+        `Reserved: $${getReservedCapital().toFixed(2)}, ` +
+        `Available: $${getAvailableBalance().toFixed(2)}`
     );
 
     const signalResults: SignalResult[] = [];
@@ -181,8 +208,8 @@ async function checkSignals() {
     for (const symbol of TRADING_PAIRS) {
       try {
         /**
-         * Открытую позицию продолжает обрабатывать checkPositions(),
-         * но здесь не считаем для неё новые торговые сигналы.
+         * Открытые позиции контролируются checkPositions().
+         * Для них новые сигналы не рассчитываем.
          */
         if (hasOpenPosition(symbol)) {
           console.log(
@@ -201,13 +228,12 @@ async function checkSignals() {
         }
 
         /**
-         * Если уже занято 3 слота, нет смысла запрашивать свечи
-         * и считать индикаторы для оставшихся свободных тикеров.
+         * Когда все три слота заняты, новые сигналы не считаем.
          */
         if (getOpenPositionsCount() >= MAX_PARALLEL_POSITIONS) {
           console.log(
             `[${new Date().toISOString()}] ⛔ ${symbol}: SIGNAL CHECK SKIPPED — ` +
-            `max positions reached (${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS})`
+              `max positions reached (${getOpenPositionsCount()}/${MAX_PARALLEL_POSITIONS})`
           );
 
           signalResults.push({
@@ -224,7 +250,9 @@ async function checkSignals() {
         const result = await runBotOnce(symbol, '15m');
 
         if (!result.ready) {
-          console.log(`[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${result.reason}`);
+          console.log(
+            `[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${result.reason}`
+          );
 
           signalResults.push({
             symbol,
@@ -250,7 +278,9 @@ async function checkSignals() {
         console.log(`\n[${new Date().toISOString()}] 🔍 ${symbol} ANALYSIS:`);
         console.log(`   Price: ${formatPrice(price)}`);
         console.log(`   Regime: ${regime}`);
-        console.log(`   MACD Cross Up: ${indicators?.macdCrossUp}, Down: ${indicators?.macdCrossDown}`);
+        console.log(
+          `   MACD Cross Up: ${indicators?.macdCrossUp}, Down: ${indicators?.macdCrossDown}`
+        );
         console.log(`   RSI: ${indicators?.lastRsi?.toFixed(2)}`);
         console.log(`   ATR: ${indicators?.lastAtr?.toFixed(4)}`);
         console.log(`   ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}`);
@@ -263,7 +293,9 @@ async function checkSignals() {
           console.log(`\n[${new Date().toISOString()}] 🚨 ${symbol}: SIGNAL DETECTED!`);
           console.log(`   Side: ${side.toUpperCase()}`);
           console.log(`   Entry: ${formatPrice(price)}`);
-          console.log(`   TP: ${takeProfitPrice?.toFixed(4)}, SL: ${stopLossPrice?.toFixed(4)}`);
+          console.log(
+            `   TP: ${takeProfitPrice?.toFixed(4)}, SL: ${stopLossPrice?.toFixed(4)}`
+          );
           console.log(`   Strategy position size: ${positionSize?.toFixed(4)}`);
 
           signalReason = 'Signal detected';
@@ -271,7 +303,9 @@ async function checkSignals() {
           if (side === 'none') {
             const reason = 'Signal side is none';
 
-            console.log(`[${new Date().toISOString()] ❌ ${symbol}: FAILED TO OPEN - ${reason}`);
+            console.log(
+              `[${new Date().toISOString()}] ❌ ${symbol}: FAILED TO OPEN - ${reason}`
+            );
 
             signalResults.push({
               symbol,
@@ -289,7 +323,9 @@ async function checkSignals() {
           if (takeProfitPrice == null || stopLossPrice == null) {
             const reason = 'Take profit or stop loss is missing';
 
-            console.log(`[${new Date().toISOString()] ❌ ${symbol}: FAILED TO OPEN - ${reason}`);
+            console.log(
+              `[${new Date().toISOString()}] ❌ ${symbol}: FAILED TO OPEN - ${reason}`
+            );
 
             signalResults.push({
               symbol,
@@ -307,7 +343,8 @@ async function checkSignals() {
           const riskCapital = getRiskCapital();
           const maxNotionalByPercent = getPositionNotional();
           const stopDistance = Math.abs(price - stopLossPrice);
-          const worstCaseFeePerUnit = (price + stopLossPrice) * 0.00075;
+          const worstCaseFeePerUnit =
+            (price + stopLossPrice) * TRADE_FEE_RATE;
           const totalRiskPerUnit = stopDistance + worstCaseFeePerUnit;
           const calculatedQuantity = riskCapital / totalRiskPerUnit;
 
@@ -335,13 +372,23 @@ async function checkSignals() {
           });
 
           if (openResult.ok && openResult.position) {
-            console.log(`[${new Date().toISOString()}] ✅ ${symbol}: POSITION OPENED!`);
+            console.log(
+              `[${new Date().toISOString()}] ✅ ${symbol}: POSITION OPENED!`
+            );
             console.log(`   Position ID: ${openResult.position.id}`);
-            console.log(`   Quantity: ${openResult.position.quantity.toFixed(4)}`);
-            console.log(`   Notional: $${openResult.position.notional.toFixed(2)}`);
+            console.log(
+              `   Quantity: ${openResult.position.quantity.toFixed(4)}`
+            );
+            console.log(
+              `   Notional: $${openResult.position.notional.toFixed(2)}`
+            );
             console.log(`   Equity: $${openResult.balance.toFixed(2)}`);
-            console.log(`   Reserved: $${openResult.reservedCapitalAfter.toFixed(2)}`);
-            console.log(`   Available: $${openResult.availableBalanceAfter.toFixed(2)}`);
+            console.log(
+              `   Reserved: $${openResult.reservedCapitalAfter.toFixed(2)}`
+            );
+            console.log(
+              `   Available: $${openResult.availableBalanceAfter.toFixed(2)}`
+            );
 
             signalResults.push({
               symbol,
@@ -375,16 +422,16 @@ async function checkSignals() {
 
             console.log(
               `   Reason: HIGH_VOLATILITY regime ` +
-              `(ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(4)}, ` +
-              `BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`
+                `(ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(4)}, ` +
+                `BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`
             );
           } else if (regime === 'range') {
             signalReason = `Range (ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)})`;
 
             console.log(
               `   Reason: RANGE regime ` +
-              `(ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}, ` +
-              `BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`
+                `(ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}, ` +
+                `BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`
             );
           } else if (regime === 'trend_up') {
             const reasons: string[] = [];
@@ -394,7 +441,9 @@ async function checkSignals() {
             }
 
             if (!indicators?.rsiBull) {
-              reasons.push(`RSI not bull (${indicators?.lastRsi?.toFixed(2)})`);
+              reasons.push(
+                `RSI not bull (${indicators?.lastRsi?.toFixed(2)})`
+              );
             }
 
             if (price <= (indicators?.regimeIndicators?.ema200 ?? 0)) {
@@ -411,7 +460,9 @@ async function checkSignals() {
             }
 
             if (!indicators?.rsiBear) {
-              reasons.push(`RSI not bear (${indicators?.lastRsi?.toFixed(2)})`);
+              reasons.push(
+                `RSI not bear (${indicators?.lastRsi?.toFixed(2)})`
+              );
             }
 
             if (price >= (indicators?.regimeIndicators?.ema200 ?? 0)) {
@@ -426,7 +477,7 @@ async function checkSignals() {
             console.log(`   Reason: BREAKOUT_WATCH - waiting for BB breakout`);
             console.log(
               `   BB Upper: ${indicators?.bbUpper?.toFixed(4)}, ` +
-              `BB Lower: ${indicators?.bbLower?.toFixed(4)}`
+                `BB Lower: ${indicators?.bbLower?.toFixed(4)}`
             );
             console.log(
               `   Price vs BB: ${
@@ -481,9 +532,12 @@ async function checkSignals() {
           positionOpened: false
         });
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        const errorMsg =
+          error instanceof Error ? error.message : 'Unknown error';
 
-        console.error(`[${new Date().toISOString()}] 💥 ${symbol}: ERROR - ${errorMsg}`);
+        console.error(
+          `[${new Date().toISOString()}] 💥 ${symbol}: ERROR - ${errorMsg}`
+        );
 
         logError({
           timestamp: new Date().toISOString(),
@@ -511,7 +565,9 @@ async function checkSignals() {
 
     await sendTelegramSummary(signalResults);
 
-    console.log(`[${new Date().toISOString()}] ========== SIGNAL CHECK END ==========\n`);
+    console.log(
+      `[${new Date().toISOString()}] ========== SIGNAL CHECK END ==========\n`
+    );
   } finally {
     signalCheckRunning = false;
   }
@@ -519,7 +575,9 @@ async function checkSignals() {
 
 async function checkPositions() {
   if (positionCheckRunning) {
-    console.warn(`[${new Date().toISOString()}] ⏭ POSITION CHECK SKIPPED — previous check is still running`);
+    console.warn(
+      `[${new Date().toISOString()}] ⏭ POSITION CHECK SKIPPED — previous check is still running`
+    );
     return;
   }
 
@@ -532,19 +590,22 @@ async function checkPositions() {
       return;
     }
 
-    console.log(`\n[${new Date().toISOString()}] ========== POSITION CHECK START ==========`);
-    console.log(`[${new Date().toISOString()}] Checking ${positions.length} position(s)...`);
+    console.log(
+      `\n[${new Date().toISOString()}] ========== POSITION CHECK START ==========`
+    );
+
+    console.log(
+      `[${new Date().toISOString()}] Checking ${positions.length} position(s)...`
+    );
+
     console.log(
       `[${new Date().toISOString()}] Equity: $${getBalance().toFixed(2)}, ` +
-      `Reserved: $${getReservedCapital().toFixed(2)}, ` +
-      `Available: $${getAvailableBalance().toFixed(2)}`
+        `Reserved: $${getReservedCapital().toFixed(2)}, ` +
+        `Available: $${getAvailableBalance().toFixed(2)}`
     );
 
     for (const position of positions) {
       try {
-        /**
-         * Позиция могла быть закрыта предыдущей итерацией или внешним действием.
-         */
         if (!hasOpenPosition(position.symbol)) {
           console.log(
             `[${new Date().toISOString()}] ⏭ ${position.symbol}: POSITION CHECK SKIPPED — no longer open`
@@ -554,67 +615,102 @@ async function checkPositions() {
 
         const currentPrice = await getCurrentPrice(position.symbol);
 
-        const unrealizedPnL = position.side === 'long'
-          ? (currentPrice - position.entryPrice) * position.quantity
-          : (position.entryPrice - currentPrice) * position.quantity;
+        const unrealizedPnL =
+          position.side === 'long'
+            ? (currentPrice - position.entryPrice) * position.quantity
+            : (position.entryPrice - currentPrice) * position.quantity;
 
-        const unrealizedPnLPercent = (unrealizedPnL / position.notional) * 100;
+        const unrealizedPnLPercent =
+          (unrealizedPnL / position.notional) * 100;
 
-        const distanceToTP = position.side === 'long'
-          ? position.takeProfitPrice - currentPrice
-          : currentPrice - position.takeProfitPrice;
+        const distanceToTP =
+          position.side === 'long'
+            ? position.takeProfitPrice - currentPrice
+            : currentPrice - position.takeProfitPrice;
 
-        const distanceToTPPercent = (distanceToTP / currentPrice) * 100;
+        const distanceToTPPercent =
+          (distanceToTP / currentPrice) * 100;
 
-        const distanceToSL = position.side === 'long'
-          ? currentPrice - position.stopLossPrice
-          : position.stopLossPrice - currentPrice;
+        const distanceToSL =
+          position.side === 'long'
+            ? currentPrice - position.stopLossPrice
+            : position.stopLossPrice - currentPrice;
 
-        const distanceToSLPercent = (distanceToSL / currentPrice) * 100;
+        const distanceToSLPercent =
+          (distanceToSL / currentPrice) * 100;
 
-        const hitTakeProfit = position.side === 'long'
-          ? currentPrice >= position.takeProfitPrice
-          : currentPrice <= position.takeProfitPrice;
+        const hitTakeProfit =
+          position.side === 'long'
+            ? currentPrice >= position.takeProfitPrice
+            : currentPrice <= position.takeProfitPrice;
 
-        const hitStopLoss = position.side === 'long'
-          ? currentPrice <= position.stopLossPrice
-          : currentPrice >= position.stopLossPrice;
+        const hitStopLoss =
+          position.side === 'long'
+            ? currentPrice <= position.stopLossPrice
+            : currentPrice >= position.stopLossPrice;
 
         const openedAt = new Date(position.openedAt).getTime();
         const now = new Date().getTime();
         const positionAgeSeconds = Math.floor((now - openedAt) / 1000);
 
-        const previousMaxPnL = position.metadata?.maxUnrealizedPnL ?? Number.NEGATIVE_INFINITY;
-        const previousWorstPnL = position.metadata?.worstUnrealizedPnL ?? Number.POSITIVE_INFINITY;
+        const previousMaxPnL =
+          position.metadata?.maxUnrealizedPnL ?? Number.NEGATIVE_INFINITY;
+
+        const previousWorstPnL =
+          position.metadata?.worstUnrealizedPnL ?? Number.POSITIVE_INFINITY;
 
         updatePositionMetadata(position.id, {
           maxUnrealizedPnL: Math.max(previousMaxPnL, unrealizedPnL),
           maxUnrealizedPnLPercent: Math.max(
-            position.metadata?.maxUnrealizedPnLPercent ?? Number.NEGATIVE_INFINITY,
+            position.metadata?.maxUnrealizedPnLPercent ??
+              Number.NEGATIVE_INFINITY,
             unrealizedPnLPercent
           ),
           worstUnrealizedPnL: Math.min(previousWorstPnL, unrealizedPnL),
           worstUnrealizedPnLPercent: Math.min(
-            position.metadata?.worstUnrealizedPnLPercent ?? Number.POSITIVE_INFINITY,
+            position.metadata?.worstUnrealizedPnLPercent ??
+              Number.POSITIVE_INFINITY,
             unrealizedPnLPercent
           )
         });
 
-        console.log(`\n[${new Date().toISOString()}] 📊 ${position.symbol} (${position.side.toUpperCase()}):`);
-        console.log(`   Entry: ${position.entryPrice.toFixed(4)}, Current: ${currentPrice.toFixed(4)}`);
-        console.log(`   TP: ${position.takeProfitPrice.toFixed(4)} (${distanceToTPPercent.toFixed(2)}% away)`);
-        console.log(`   SL: ${position.stopLossPrice.toFixed(4)} (${distanceToSLPercent.toFixed(2)}% away)`);
-        console.log(`   Unrealized PnL: $${unrealizedPnL.toFixed(2)} (${unrealizedPnLPercent.toFixed(2)}%)`);
-        console.log(`   Reserved: $${position.reservedCapital.toFixed(2)}`);
-        console.log(`   Age: ${Math.floor(positionAgeSeconds / 60)}m ${positionAgeSeconds % 60}s`);
+        console.log(
+          `\n[${new Date().toISOString()}] 📊 ${position.symbol} (${position.side.toUpperCase()}):`
+        );
+        console.log(
+          `   Entry: ${position.entryPrice.toFixed(4)}, Current: ${currentPrice.toFixed(4)}`
+        );
+        console.log(
+          `   TP: ${position.takeProfitPrice.toFixed(4)} (${distanceToTPPercent.toFixed(2)}% away)`
+        );
+        console.log(
+          `   SL: ${position.stopLossPrice.toFixed(4)} (${distanceToSLPercent.toFixed(2)}% away)`
+        );
+        console.log(
+          `   Unrealized PnL: $${unrealizedPnL.toFixed(2)} (${unrealizedPnLPercent.toFixed(2)}%)`
+        );
+        console.log(
+          `   Reserved: $${position.reservedCapital.toFixed(2)}`
+        );
+        console.log(
+          `   Age: ${Math.floor(positionAgeSeconds / 60)}m ${positionAgeSeconds % 60}s`
+        );
 
         if (hitTakeProfit) {
-          console.log(`[${new Date().toISOString()}] 🎯 ${position.symbol}: HIT TAKE PROFIT!`);
+          console.log(
+            `[${new Date().toISOString()}] 🎯 ${position.symbol}: HIT TAKE PROFIT!`
+          );
 
-          const result = closePosition(position.id, currentPrice, 'take_profit');
+          const result = closePosition(
+            position.id,
+            currentPrice,
+            'take_profit'
+          );
 
           if (result.ok && result.balance !== undefined) {
-            console.log(`[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT TP`);
+            console.log(
+              `[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT TP`
+            );
             console.log(`   Exit: ${currentPrice.toFixed(4)}`);
 
             const pnlPercent = result.lastClosedTrade
@@ -622,12 +718,15 @@ async function checkPositions() {
               : 0;
 
             console.log(
-              `   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)} ` +
-              `(${pnlPercent.toFixed(2)}%)`
+              `   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)} (${pnlPercent.toFixed(2)}%)`
             );
             console.log(`   Equity: $${result.balance.toFixed(2)}`);
-            console.log(`   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`);
-            console.log(`   Available: $${result.availableBalanceAfter.toFixed(2)}`);
+            console.log(
+              `   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`
+            );
+            console.log(
+              `   Available: $${result.availableBalanceAfter.toFixed(2)}`
+            );
           } else {
             console.error(
               `[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`
@@ -649,17 +748,31 @@ async function checkPositions() {
             });
           }
         } else if (hitStopLoss) {
-          console.log(`[${new Date().toISOString()}] 🛑 ${position.symbol}: HIT STOP LOSS!`);
+          console.log(
+            `[${new Date().toISOString()}] 🛑 ${position.symbol}: HIT STOP LOSS!`
+          );
 
-          const result = closePosition(position.id, currentPrice, 'stop_loss');
+          const result = closePosition(
+            position.id,
+            currentPrice,
+            'stop_loss'
+          );
 
           if (result.ok && result.balance !== undefined) {
-            console.log(`[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT SL`);
+            console.log(
+              `[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT SL`
+            );
             console.log(`   Exit: ${currentPrice.toFixed(4)}`);
-            console.log(`   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)}`);
+            console.log(
+              `   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)}`
+            );
             console.log(`   Equity: $${result.balance.toFixed(2)}`);
-            console.log(`   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`);
-            console.log(`   Available: $${result.availableBalanceAfter.toFixed(2)}`);
+            console.log(
+              `   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`
+            );
+            console.log(
+              `   Available: $${result.availableBalanceAfter.toFixed(2)}`
+            );
           } else {
             console.error(
               `[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`
@@ -701,13 +814,20 @@ async function checkPositions() {
           distanceToSLPercent,
           hitTakeProfit,
           hitStopLoss,
-          action: hitTakeProfit ? 'close_tp' : hitStopLoss ? 'close_sl' : 'hold',
+          action: hitTakeProfit
+            ? 'close_tp'
+            : hitStopLoss
+              ? 'close_sl'
+              : 'hold',
           positionAgeSeconds
         });
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        const errorMsg =
+          error instanceof Error ? error.message : 'Unknown error';
 
-        console.error(`[${new Date().toISOString()}] 💥 ${position.symbol}: ERROR - ${errorMsg}`);
+        console.error(
+          `[${new Date().toISOString()}] 💥 ${position.symbol}: ERROR - ${errorMsg}`
+        );
 
         logError({
           timestamp: new Date().toISOString(),
@@ -726,7 +846,9 @@ async function checkPositions() {
       }
     }
 
-    console.log(`[${new Date().toISOString()}] ========== POSITION CHECK END ==========\n`);
+    console.log(
+      `[${new Date().toISOString()}] ========== POSITION CHECK END ==========\n`
+    );
   } finally {
     positionCheckRunning = false;
   }
@@ -734,13 +856,33 @@ async function checkPositions() {
 
 export function startScheduler() {
   console.log(`\n[${new Date().toISOString()}] 🚀 TRADING BOT STARTING...`);
-  console.log(`[${new Date().toISOString()}] Port: ${Number(process.env.PORT) || 3002}`);
-  console.log(`[${new Date().toISOString()}] Signal check interval: ${SIGNAL_CHECK_INTERVAL_MS / 1000}s`);
-  console.log(`[${new Date().toISOString()}] Position check interval: ${POSITION_CHECK_INTERVAL_MS / 1000}s`);
-  console.log(`[${new Date().toISOString()}] Trading pairs: ${[...TRADING_PAIRS].join(', ')}`);
-  console.log(`[${new Date().toISOString()}] Max positions: ${MAX_PARALLEL_POSITIONS}`);
-  console.log(`[${new Date().toISOString()}] Position size: ${(getPositionNotional() / getBalance() * 100).toFixed(0)}% of equity`);
-  console.log(`[${new Date().toISOString()}] Starting equity: $${getBalance().toFixed(2)}\n`);
+  console.log(
+    `[${new Date().toISOString()}] Port: ${Number(process.env.PORT) || 3002}`
+  );
+  console.log(
+    `[${new Date().toISOString()}] Signal check interval: ${SIGNAL_CHECK_INTERVAL_MS / 1000}s`
+  );
+  console.log(
+    `[${new Date().toISOString()}] Position check interval: ${POSITION_CHECK_INTERVAL_MS / 1000}s`
+  );
+  console.log(
+    `[${new Date().toISOString()}] Trading pairs: ${[...TRADING_PAIRS].join(', ')}`
+  );
+  console.log(
+    `[${new Date().toISOString()}] Max positions: ${MAX_PARALLEL_POSITIONS}`
+  );
+
+  const positionPercent =
+    getBalance() > 0
+      ? (getPositionNotional() / getBalance()) * 100
+      : 0;
+
+  console.log(
+    `[${new Date().toISOString()}] Position size: ${positionPercent.toFixed(0)}% of equity`
+  );
+  console.log(
+    `[${new Date().toISOString()}] Starting equity: $${getBalance().toFixed(2)}\n`
+  );
 
   notifyStartup({
     port: Number(process.env.PORT) || 3002,
@@ -750,11 +892,13 @@ export function startScheduler() {
   });
 
   void checkSignals();
+
   signalCheckInterval = setInterval(() => {
     void checkSignals();
   }, SIGNAL_CHECK_INTERVAL_MS);
 
   void checkPositions();
+
   positionCheckInterval = setInterval(() => {
     void checkPositions();
   }, POSITION_CHECK_INTERVAL_MS);
