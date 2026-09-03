@@ -11,6 +11,19 @@ npm install
 
 docker compose logs -f trade_bot
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 npx tsx src/backtest/downloadCandles.ts SOLUSDT 120 15m
 npx tsx src/backtest/downloadCandles.ts SOLUSDT 120 1m
 npx tsx src/backtest/runBacktest.ts \
