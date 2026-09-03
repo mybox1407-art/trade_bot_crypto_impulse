@@ -12,6 +12,9 @@ const BB_SQUEEZE_THRESHOLD = 0.05;
 const BREAKOUT_ATR_BUFFER_K = 0.2;
 const BREAKOUT_BODY_ATR_MIN = 0.5;
 
+// skip entry if price moved too far from signal level
+const ENTRY_SLIPPAGE_ATR_MAX = 0.5;
+
 export interface Candle {
   time: number;
   open: number;
@@ -123,7 +126,7 @@ export function detectMarketRegime(candles: Candle[]) {
   };
 }
 
-export function analyzeMarket(candles: Candle[]) {
+export function analyzeMarket(candles: Candle[], signalPrice?: number) {
   const closes = candles.map(c => c.close);
   const highs = candles.map(c => c.high);
   const lows = candles.map(c => c.low);
@@ -144,7 +147,8 @@ export function analyzeMarket(candles: Candle[]) {
       stopLossPrice: null,
       positionSize: null,
       regime: 'unknown',
-      indicators: { ready: false }
+      indicators: { ready: false },
+      skipReason: 'Indicators not ready'
     };
   }
 
@@ -170,6 +174,7 @@ export function analyzeMarket(candles: Candle[]) {
   let takeProfitPrice: number | null = null;
   let stopLossPrice: number | null = null;
   let positionSize: number | null = null;
+  let skipReason: string | null = null;
 
   if (ENABLE_TREND_UP_TRADES && regime === 'trend_up' && macdCrossUp && rsiBull && price > regimeIndicators.ema200) {
     side = 'long';
@@ -219,6 +224,17 @@ export function analyzeMarket(candles: Candle[]) {
     side = 'none';
   }
 
+  // skip if price moved too far from signal level
+  if ((buy || sell) && signalPrice != null && lastAtr > 0) {
+    const distance = Math.abs(price - signalPrice);
+    if (distance > lastAtr * ENTRY_SLIPPAGE_ATR_MAX) {
+      buy = false;
+      sell = false;
+      side = 'none';
+      skipReason = `Price moved ${(distance / lastAtr).toFixed(2)} ATR from signal`;
+    }
+  }
+
   if (side !== 'none' && stopLossPrice != null) {
     const riskPerUnit = Math.abs(price - stopLossPrice);
     positionSize = riskPerUnit > 0 ? riskCapital / riskPerUnit : null;
@@ -233,6 +249,7 @@ export function analyzeMarket(candles: Candle[]) {
     stopLossPrice,
     positionSize,
     regime,
+    skipReason,
     indicators: {
       macdCrossUp,
       macdCrossDown,
