@@ -1,7 +1,10 @@
 export const TRADING_PAIRS = [
   'SOL/USDT',
   'AVAX/USDT',
-  'ADA/USDT'
+  'ADA/USDT',
+  'LINK/USDT',
+  'ETH/USDT',
+  'DOT/USDT'
 ];
 
 export const SIGNAL_CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 минут
