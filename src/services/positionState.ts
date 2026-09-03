@@ -30,6 +30,8 @@ export interface VirtualPosition {
     maxUnrealizedPnLPercent?: number;
     worstUnrealizedPnL?: number;
     worstUnrealizedPnLPercent?: number;
+    beTriggered?: boolean;
+    partialClosed?: boolean;
   };
 }
 
@@ -143,11 +145,6 @@ export function getLastClosedTrade() {
   return lastClosedTrade;
 }
 
-/**
- * Целевой notional одной позиции: 30% текущего equity.
- * Реальный размер дополнительно ограничивается available balance
- * в openPosition().
- */
 export function getPositionNotional() {
   return balance * POSITION_PERCENT;
 }
@@ -248,10 +245,6 @@ export function openPosition(data: {
 
   const requestedNotionalByPercent = data.maxNotionalByPercent ?? getPositionNotional();
 
-  /**
-   * Нельзя занять больше 30% equity и больше свободного остатка.
-   * При 3 позициях по 30% суммарно будет зарезервировано около 90% equity.
-   */
   const maxNotionalByAvailableBalance = Math.min(
     requestedNotionalByPercent,
     availableBalanceBefore
@@ -294,10 +287,6 @@ export function openPosition(data: {
     };
   }
 
-  /**
-   * Нужно иметь свободный капитал под весь notional и дополнительно
-   * достаточно equity для уплаты комиссии открытия.
-   */
   if (notional > availableBalanceBefore) {
     return {
       ok: false,
@@ -324,11 +313,6 @@ export function openPosition(data: {
     };
   }
 
-  /**
-   * balance = total equity.
-   * reservedCapital = полный notional открытых позиций.
-   * При открытии резервируем notional, из equity вычитаем только входную комиссию.
-   */
   balance -= entryFee;
   reservedCapital += notional;
 
@@ -435,10 +419,6 @@ export function closePosition(
   const exitFee = exitPrice * position.quantity * TRADE_FEE_RATE;
   const totalFee = position.entryFee + exitFee;
 
-  /**
-   * entryFee уже был списан при openPosition(),
-   * поэтому при закрытии учитываем gross PnL и только exitFee.
-   */
   const netPnL = realizedPnL - exitFee;
   const netPnLPercent = (netPnL / position.notional) * 100;
 
@@ -464,10 +444,6 @@ export function closePosition(
     reason
   };
 
-  /**
-   * Сначала освобождаем зарезервированный капитал,
-   * затем применяем реализованный PnL к equity.
-   */
   currentPositions = currentPositions.filter(
     openPosition => openPosition.id !== positionId
   );
@@ -477,10 +453,6 @@ export function closePosition(
     reservedCapital - position.reservedCapital
   );
 
-  /**
-   * Защита от накопленной floating-point ошибки:
-   * сверяем агрегированный резерв с фактическими открытыми позициями.
-   */
   reservedCapital = calculateReservedCapital();
   balance += netPnL;
 
@@ -542,6 +514,51 @@ export function closePosition(
     availableBalanceBefore,
     availableBalanceAfter
   };
+}
+
+export function partialClosePosition(
+  positionId: string,
+  quantityToClose: number,
+  exitPrice: number
+): { ok: true; realizedPnL: number; position: VirtualPosition } | { ok: false; message: string } {
+  const index = currentPositions.findIndex(position => position.id === positionId);
+
+  if (index === -1) {
+    return { ok: false, message: 'No open position' };
+  }
+
+  if (!isFinitePositive(exitPrice)) {
+    return { ok: false, message: 'Invalid exit price' };
+  }
+
+  const position = currentPositions[index];
+
+  if (quantityToClose <= 0 || quantityToClose >= position.quantity) {
+    return { ok: false, message: 'Invalid quantity for partial close' };
+  }
+
+  const realizedPnL = position.side === 'long'
+    ? (exitPrice - position.entryPrice) * quantityToClose
+    : (position.entryPrice - exitPrice) * quantityToClose;
+
+  const exitFee = exitPrice * quantityToClose * TRADE_FEE_RATE;
+  const netPnL = realizedPnL - exitFee;
+
+  // уменьшаем позицию
+  const oldQuantity = position.quantity;
+  position.quantity -= quantityToClose;
+  position.notional = position.quantity * exitPrice;
+  position.reservedCapital = position.notional;
+
+  // освобождаем часть резерва под закрытый кусок
+  const freedNotional = oldQuantity * exitPrice - position.notional;
+  reservedCapital = Math.max(0, reservedCapital - freedNotional);
+  reservedCapital = calculateReservedCapital();
+
+  // применяем PnL к балансу
+  balance += netPnL;
+
+  return { ok: true, realizedPnL: netPnL, position };
 }
 
 export function updatePositionMetadata(
