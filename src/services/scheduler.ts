@@ -17,7 +17,9 @@ import {
   getReservedCapital,
   getRiskCapital,
   getPositionNotional,
-  updatePositionMetadata
+  updatePositionMetadata,
+  PartialCloseResult,
+  partialClosePosition
 } from './positionState';
 import { TRADE_FEE_RATE } from './strategy';
 import { logSignalCheck, logPositionCheck, logError } from './logger';
@@ -207,10 +209,6 @@ async function checkSignals() {
 
     for (const symbol of TRADING_PAIRS) {
       try {
-        /**
-         * Открытые позиции контролируются checkPositions().
-         * Для них новые сигналы не рассчитываем.
-         */
         if (hasOpenPosition(symbol)) {
           console.log(
             `[${new Date().toISOString()}] 📌 ${symbol}: SIGNAL CHECK SKIPPED — open position exists`
@@ -227,9 +225,6 @@ async function checkSignals() {
           continue;
         }
 
-        /**
-         * Когда все три слота заняты, новые сигналы не считаем.
-         */
         if (getOpenPositionsCount() >= MAX_PARALLEL_POSITIONS) {
           console.log(
             `[${new Date().toISOString()}] ⛔ ${symbol}: SIGNAL CHECK SKIPPED — ` +
@@ -276,6 +271,7 @@ async function checkSignals() {
         const positionSize = (result as any).positionSize as number | null;
         const regime = (result as any).regime as string;
         const indicators = (result as any).indicators as any;
+        const skipReason = (result as any).skipReason as string | null;
 
         console.log(`\n[${new Date().toISOString()}] 🔍 ${symbol} ANALYSIS:`);
         console.log(`   Price: ${formatPrice(price)}`);
@@ -290,6 +286,19 @@ async function checkSignals() {
         console.log(`   Signal: ${buy ? 'BUY' : sell ? 'SELL' : 'NONE'}`);
 
         let signalReason = '';
+
+        if (skipReason) {
+          console.log(`   ⚠️ Signal skipped: ${skipReason}`);
+          signalReason = skipReason;
+          signalResults.push({
+            symbol,
+            status: 'no_signal',
+            regime,
+            hasSignal: false,
+            reason: signalReason
+          });
+          continue;
+        }
 
         if (buy || sell) {
           console.log(`\n[${new Date().toISOString()}] 🚨 ${symbol}: SIGNAL DETECTED!`);
@@ -697,6 +706,44 @@ async function checkPositions() {
         console.log(
           `   Age: ${Math.floor(positionAgeSeconds / 60)}m ${positionAgeSeconds % 60}s`
         );
+
+        const beTriggered = position.metadata?.beTriggered ?? false;
+        const partialClosed = position.metadata?.partialClosed ?? false;
+
+        // BE+fees at +0.4%
+        if (!beTriggered && unrealizedPnLPercent >= 0.4) {
+          const feesPerUnit = (position.entryPrice + currentPrice) * TRADE_FEE_RATE;
+          const bePrice =
+            position.side === 'long'
+              ? position.entryPrice + feesPerUnit
+              : position.entryPrice - feesPerUnit;
+
+          const newStop =
+            position.side === 'long'
+              ? Math.max(position.stopLossPrice, bePrice)
+              : Math.min(position.stopLossPrice, bePrice);
+
+          if (newStop !== position.stopLossPrice) {
+            position.stopLossPrice = newStop;
+            updatePositionMetadata(position.id, { beTriggered: true });
+            console.log(
+              `[${new Date().toISOString()}] 🛡 ${position.symbol}: MOVED SL TO BE+FEES @ ${formatPrice(newStop)}`
+            );
+          }
+        }
+
+        // Partial close 50% + trailing after +0.8%
+        if (!partialClosed && unrealizedPnLPercent >= 0.8) {
+          const closeQty = position.quantity * 0.5;
+          const partialResult = partialClosePosition(position.id, closeQty, currentPrice);
+
+          if (partialResult.ok) {
+            updatePositionMetadata(position.id, { partialClosed: true });
+            console.log(
+              `[${new Date().toISOString()}] 📉 ${position.symbol}: PARTIAL CLOSED ${closeQty.toFixed(4)} @ ${formatPrice(currentPrice)}`
+            );
+          }
+        }
 
         if (hitTakeProfit) {
           console.log(
