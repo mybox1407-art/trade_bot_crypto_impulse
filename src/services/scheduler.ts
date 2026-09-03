@@ -18,7 +18,8 @@ import {
   getRiskCapital,
   getPositionNotional,
   updatePositionMetadata,
-  partialClosePosition
+  partialClosePosition,
+  updatePositionStopLoss
 } from './positionState';
 import { TRADE_FEE_RATE } from './strategy';
 import { logSignalCheck, logPositionCheck, logError } from './logger';
@@ -714,7 +715,7 @@ async function checkPositions() {
         const partialClosed = position.metadata?.partialClosed ?? false;
         const trailingActive = position.metadata?.trailingActive ?? false;
 
-        // 1) BE+fees at +0.4% — ФИКС: сохраняем изменение в state
+        // 1) BE+fees at +0.4%
         if (!beTriggered && unrealizedPnLPercent >= 0.4) {
           const feesPerUnit = (position.entryPrice + currentPrice) * TRADE_FEE_RATE;
           const bePrice =
@@ -728,22 +729,9 @@ async function checkPositions() {
               : Math.min(position.stopLossPrice, bePrice);
 
           if (newStop !== position.stopLossPrice) {
+            updatePositionStopLoss(position.id, newStop);
             position.stopLossPrice = newStop;
             updatePositionMetadata(position.id, { beTriggered: true });
-            
-            // ФИКС БАГА: явно сохраняем новый стоп в массив позиций
-            const positionsNow = getPositions();
-            const idx = positionsNow.findIndex(p => p.id === position.id);
-            if (idx !== -1) {
-              // Обновляем стоп в глобальном state
-              const allPositions = (global as any).__currentPositions;
-              if (allPositions && Array.isArray(allPositions)) {
-                const globalIdx = allPositions.findIndex((p: any) => p.id === position.id);
-                if (globalIdx !== -1) {
-                  allPositions[globalIdx].stopLossPrice = newStop;
-                }
-              }
-            }
             
             console.log(
               `[${new Date().toISOString()}] 🛡 ${position.symbol}: MOVED SL TO BE+FEES @ ${formatPrice(newStop)}`
@@ -798,20 +786,8 @@ async function checkPositions() {
             updatePositionMetadata(position.id, {
               trailingStopPrice: improvedStop
             });
+            updatePositionStopLoss(position.id, improvedStop);
             position.stopLossPrice = improvedStop;
-            
-            // ФИКС: сохраняем трейлинг-стоп в state
-            const positionsNow = getPositions();
-            const idx = positionsNow.findIndex(p => p.id === position.id);
-            if (idx !== -1) {
-              const allPositions = (global as any).__currentPositions;
-              if (allPositions && Array.isArray(allPositions)) {
-                const globalIdx = allPositions.findIndex((p: any) => p.id === position.id);
-                if (globalIdx !== -1) {
-                  allPositions[globalIdx].stopLossPrice = improvedStop;
-                }
-              }
-            }
             
             console.log(
               `[${new Date().toISOString()}] 🔁 ${position.symbol}: TRAILING STOP MOVED TO ${formatPrice(improvedStop)}`
