@@ -5,7 +5,7 @@ export const TRADING_PAIRS = [
   'LINK/USDT',
   'ETH/USDT',
   'DOT/USDT',
-  'BTC/USDT
+  'BTC/USDT'
 ];
 
 export const SIGNAL_CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 минут
