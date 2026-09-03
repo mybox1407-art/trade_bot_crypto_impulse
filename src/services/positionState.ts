@@ -32,6 +32,8 @@ export interface VirtualPosition {
     worstUnrealizedPnLPercent?: number;
     beTriggered?: boolean;
     partialClosed?: boolean;
+    trailingActive?: boolean;
+    trailingStopPrice?: number;
   };
 }
 
@@ -544,18 +546,15 @@ export function partialClosePosition(
   const exitFee = exitPrice * quantityToClose * TRADE_FEE_RATE;
   const netPnL = realizedPnL - exitFee;
 
-  // уменьшаем позицию
   const oldQuantity = position.quantity;
   position.quantity -= quantityToClose;
   position.notional = position.quantity * exitPrice;
   position.reservedCapital = position.notional;
 
-  // освобождаем часть резерва под закрытый кусок
   const freedNotional = oldQuantity * exitPrice - position.notional;
   reservedCapital = Math.max(0, reservedCapital - freedNotional);
   reservedCapital = calculateReservedCapital();
 
-  // применяем PnL к балансу
   balance += netPnL;
 
   return { ok: true, realizedPnL: netPnL, position };
