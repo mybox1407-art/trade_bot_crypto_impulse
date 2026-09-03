@@ -586,3 +586,14 @@ export function updatePositionMetadata(
 
   return true;
 }
+
+export function updatePositionStopLoss(
+  positionId: string,
+  newStopLossPrice: number
+): boolean {
+  const idx = currentPositions.findIndex(p => p.id === positionId);
+  if (idx === -1) return false;
+  
+  currentPositions[idx].stopLossPrice = newStopLossPrice;
+  return true;
+}
