@@ -15,26 +15,38 @@ function ensureFileExists(filePath: string, headers: string[]) {
   }
 }
 
-function writeRow(fileName: string, row: Record<string, string | number | boolean | null>) {
+function writeRow(
+  fileName: string,
+  row: Record<string, string | number | boolean | null | undefined>
+) {
   ensureDirExists();
-  
+
   const filePath = path.join(LOG_DIR, fileName);
   const headers = Object.keys(row);
+
   ensureFileExists(filePath, headers);
-  
-  const values = headers.map(h => {
-    const val = row[h];
-    if (val === null || val === undefined) {
+
+  const values = headers.map(header => {
+    const value = row[header];
+
+    if (value === null || value === undefined) {
       return '';
     }
-    const strVal = String(val);
-    if (strVal.includes(',') || strVal.includes('"') || strVal.includes('\n')) {
-      return `"${strVal.replace(/"/g, '""')}"`;
+
+    const stringValue = String(value);
+
+    if (
+      stringValue.includes(',') ||
+      stringValue.includes('"') ||
+      stringValue.includes('\n')
+    ) {
+      return `"${stringValue.replace(/"/g, '""')}"`;
     }
-    return strVal;
+
+    return stringValue;
   });
 
-  fs.appendFileSync(filePath, values.join(',') + '\n');
+  fs.appendFileSync(filePath, `${values.join(',')}\n`);
 }
 
 export function logSignalCheck(row: {
@@ -96,6 +108,31 @@ export function logPositionOpen(row: {
   adx: number;
   bbWidth: number;
   atrPct: number;
+
+  // Индикаторы на момент фактического входа.
+  // Нужны для анализа качества входа и симуляции фильтров.
+  ema20: number;
+  ema50: number;
+  ema200: number;
+
+  // Для long: entryPrice - EMA20.
+  // Для short: EMA20 - entryPrice.
+  // Положительное значение означает, что вход сделан
+  // в направлении импульса относительно EMA20.
+  entryDistanceFromEma20: number;
+
+  // То же отклонение, но в процентах от EMA20.
+  entryDistanceFromEma20Percent: number;
+
+  // Главный аналитический показатель:
+  // entryDistanceFromEma20 / lastAtr.
+  // Например, 1.20 означает, что entry расположен
+  // на 1.2 ATR выше EMA20 для long.
+  entryDistanceFromEma20Atr: number;
+
+  // true, когда вход расположен дальше допустимого
+  // расстояния от EMA20 и должен быть отфильтрован.
+  entryTooExtended: boolean;
 }) {
   writeRow('position_open_log.csv', row);
 }
@@ -149,6 +186,12 @@ export function logPositionClose(row: {
   maxUnrealizedPnLPercent?: number;
   worstUnrealizedPnL?: number;
   worstUnrealizedPnLPercent?: number;
+
+  // Необязательные поля для будущего анализа управления выходом.
+  beTriggered?: boolean;
+  partialClosed?: boolean;
+  trailingActive?: boolean;
+  trailingStopPrice?: number;
 }) {
   writeRow('trade_log.csv', row);
 }
