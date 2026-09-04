@@ -42,11 +42,16 @@ type SignalResult = {
   reason: string;
 };
 
-const BE_THRESHOLD_PERCENT = 0.4;
+const BE_THRESHOLD_PERCENT = 0.35;
 const LOCK_RATIO = 0.5;
+
 const PARTIAL_THRESHOLD_PERCENT = 0.8;
 const TRAILING_DISTANCE_PERCENT = 0.35;
-const ROUND_TRIP_FEE_PERCENT = TRADE_FEE_RATE * 2 * 100;
+
+const ROUND_TRIP_FEE_PERCENT = TRADE_FEE_RATE * 2 * 100; // 0.15%
+const BE_SLIPPAGE_BUFFER_PERCENT = 0.05;
+const MIN_LOCKED_PERCENT =
+  ROUND_TRIP_FEE_PERCENT + BE_SLIPPAGE_BUFFER_PERCENT; // 0.20%
 
 let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
@@ -659,9 +664,8 @@ async function checkPositions() {
           maxUnrealizedPnLPercent >= BE_THRESHOLD_PERCENT
         ) {
           const lockedPercent =
-            ROUND_TRIP_FEE_PERCENT +
+            MIN_LOCKED_PERCENT +
             (maxUnrealizedPnLPercent - BE_THRESHOLD_PERCENT) * LOCK_RATIO;
-
           const ratchetStop =
             position.side === 'long'
               ? position.entryPrice * (1 + lockedPercent / 100)
