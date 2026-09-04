@@ -48,10 +48,10 @@ const LOCK_RATIO = 0.5;
 const PARTIAL_THRESHOLD_PERCENT = 0.8;
 const TRAILING_DISTANCE_PERCENT = 0.35;
 
-const ROUND_TRIP_FEE_PERCENT = TRADE_FEE_RATE * 2 * 100; // 0.15%
+const ROUND_TRIP_FEE_PERCENT = TRADE_FEE_RATE * 2 * 100;
 const BE_SLIPPAGE_BUFFER_PERCENT = 0.05;
 const MIN_LOCKED_PERCENT =
-  ROUND_TRIP_FEE_PERCENT + BE_SLIPPAGE_BUFFER_PERCENT; // 0.20%
+  ROUND_TRIP_FEE_PERCENT + BE_SLIPPAGE_BUFFER_PERCENT;
 
 let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
@@ -296,6 +296,15 @@ async function checkSignals() {
         console.log(
           `   BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)}`
         );
+
+        if (indicators?.entryExtensionAtr != null) {
+          console.log(
+            `   Entry extension: ${indicators.entryExtensionAtr.toFixed(2)} ATR ` +
+              `(limit: ${indicators.maxEntryExtensionAtr?.toFixed(2) ?? 'n/a'} ATR, ` +
+              `filtered: ${indicators.entryTooExtended === true})`
+          );
+        }
+
         console.log(`   Signal: ${buy ? 'BUY' : sell ? 'SELL' : 'NONE'}`);
 
         let signalReason = '';
@@ -309,6 +318,36 @@ async function checkSignals() {
             regime,
             hasSignal: false,
             reason: skipReason
+          });
+
+          logSignalCheck({
+            timestamp: new Date().toISOString(),
+            symbol,
+            timeframe: '15m',
+            side: 'none',
+            price: price ?? 0,
+            regime: regime ?? 'unknown',
+            takeProfitPrice: null,
+            stopLossPrice: null,
+            positionSize: null,
+            macdCrossUp: indicators?.macdCrossUp ?? false,
+            macdCrossDown: indicators?.macdCrossDown ?? false,
+            lastRsi: indicators?.lastRsi ?? 0,
+            lastAtr: indicators?.lastAtr ?? 0,
+            rsiBull: indicators?.rsiBull ?? false,
+            rsiBear: indicators?.rsiBear ?? false,
+            bbUpper: indicators?.bbUpper ?? 0,
+            bbMiddle: indicators?.bbMiddle ?? 0,
+            bbLower: indicators?.bbLower ?? 0,
+            adx: indicators?.regimeIndicators?.adx ?? 0,
+            adxRising: indicators?.regimeIndicators?.adxRising ?? false,
+            ema20: indicators?.regimeIndicators?.ema20 ?? 0,
+            ema50: indicators?.regimeIndicators?.ema50 ?? 0,
+            ema200: indicators?.regimeIndicators?.ema200 ?? 0,
+            bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
+            atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
+            signalTriggered: false,
+            positionOpened: false
           });
 
           continue;
@@ -391,8 +430,22 @@ async function checkSignals() {
               lastAtr: indicators?.lastAtr ?? 0,
               adx: indicators?.regimeIndicators?.adx ?? 0,
               bbWidth: indicators?.regimeIndicators?.bbWidth ?? 0,
-              atrPct: indicators?.regimeIndicators?.atrPct ?? 0
-            },
+              atrPct: indicators?.regimeIndicators?.atrPct ?? 0,
+
+              // Новое: сохраняем EMA на момент входа
+              // для оценки качества сделки после её закрытия.
+              ema20: indicators?.regimeIndicators?.ema20 ?? 0,
+              ema50: indicators?.regimeIndicators?.ema50 ?? 0,
+              ema200: indicators?.regimeIndicators?.ema200 ?? 0,
+
+              // Новое: сохраняем оценку extension,
+              // рассчитанную strategy.ts.
+              entryExtensionAtr: indicators?.entryExtensionAtr ?? 0,
+              maxEntryExtensionAtr:
+                indicators?.maxEntryExtensionAtr ?? 0,
+              entryTooExtended:
+                indicators?.entryTooExtended ?? false
+            } as any,
             riskCapital,
             maxNotionalByPercent,
             stopDistance,
@@ -658,7 +711,6 @@ async function checkPositions() {
         const partialClosed = position.metadata?.partialClosed ?? false;
         const trailingActive = position.metadata?.trailingActive ?? false;
 
-        // 1) Непрерывный BE / ratchet для полной позиции.
         if (
           !partialClosed &&
           maxUnrealizedPnLPercent >= BE_THRESHOLD_PERCENT
@@ -666,6 +718,7 @@ async function checkPositions() {
           const lockedPercent =
             MIN_LOCKED_PERCENT +
             (maxUnrealizedPnLPercent - BE_THRESHOLD_PERCENT) * LOCK_RATIO;
+
           const ratchetStop =
             position.side === 'long'
               ? position.entryPrice * (1 + lockedPercent / 100)
@@ -700,7 +753,6 @@ async function checkPositions() {
           }
         }
 
-        // 2) При достижении +0.8% фиксируем половину позиции и включаем трейлинг.
         if (
           !partialClosed &&
           maxUnrealizedPnLPercent >= PARTIAL_THRESHOLD_PERCENT
@@ -781,7 +833,6 @@ async function checkPositions() {
           );
         }
 
-        // 3) Трейлинг для остатка после partial close.
         if (trailingActive || partialClosed) {
           const statePosition = getPositions().find(
             item => item.id === position.id
@@ -842,7 +893,6 @@ async function checkPositions() {
           }
         }
 
-        // После BE, ratchet, partial и trailing используем актуальную позицию из state.
         const activePosition = getPositions().find(
           item => item.id === position.id
         );
