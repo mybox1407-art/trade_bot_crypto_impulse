@@ -42,6 +42,12 @@ type SignalResult = {
   reason: string;
 };
 
+const BE_THRESHOLD_PERCENT = 0.4;
+const LOCK_RATIO = 0.5;
+const PARTIAL_THRESHOLD_PERCENT = 0.8;
+const TRAILING_DISTANCE_PERCENT = 0.35;
+const ROUND_TRIP_FEE_PERCENT = TRADE_FEE_RATE * 2 * 100;
+
 let signalCheckInterval: NodeJS.Timeout | null = null;
 let positionCheckInterval: NodeJS.Timeout | null = null;
 
@@ -246,11 +252,11 @@ async function checkSignals() {
 
         if (!result.ready) {
           const reason = result.reason ?? 'Strategy result is not ready';
-        
+
           console.log(
             `[${new Date().toISOString()}] ❌ ${symbol}: NOT READY - ${reason}`
           );
-        
+
           signalResults.push({
             symbol,
             status: 'not_ready',
@@ -258,7 +264,7 @@ async function checkSignals() {
             hasSignal: false,
             reason
           });
-        
+
           continue;
         }
 
@@ -282,32 +288,39 @@ async function checkSignals() {
         console.log(`   RSI: ${indicators?.lastRsi?.toFixed(2)}`);
         console.log(`   ATR: ${indicators?.lastAtr?.toFixed(4)}`);
         console.log(`   ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}`);
-        console.log(`   BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)}`);
+        console.log(
+          `   BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)}`
+        );
         console.log(`   Signal: ${buy ? 'BUY' : sell ? 'SELL' : 'NONE'}`);
 
         let signalReason = '';
 
         if (skipReason) {
           console.log(`   ⚠️ Signal skipped: ${skipReason}`);
-          signalReason = skipReason;
+
           signalResults.push({
             symbol,
             status: 'no_signal',
             regime,
             hasSignal: false,
-            reason: signalReason
+            reason: skipReason
           });
+
           continue;
         }
 
         if (buy || sell) {
-          console.log(`\n[${new Date().toISOString()}] 🚨 ${symbol}: SIGNAL DETECTED!`);
+          console.log(
+            `\n[${new Date().toISOString()}] 🚨 ${symbol}: SIGNAL DETECTED!`
+          );
           console.log(`   Side: ${side.toUpperCase()}`);
           console.log(`   Entry: ${formatPrice(price)}`);
           console.log(
             `   TP: ${takeProfitPrice?.toFixed(4)}, SL: ${stopLossPrice?.toFixed(4)}`
           );
-          console.log(`   Strategy position size: ${positionSize?.toFixed(4)}`);
+          console.log(
+            `   Strategy position size: ${positionSize?.toFixed(4)}`
+          );
 
           signalReason = 'Signal detected';
 
@@ -388,7 +401,7 @@ async function checkSignals() {
             );
             console.log(`   Position ID: ${openResult.position.id}`);
             console.log(
-              `   Quantity: ${openResult.position.quantity.toFixed(4)}`
+              `   Quantity: ${openResult.position.quantity.toFixed(8)}`
             );
             console.log(
               `   Notional: $${openResult.position.notional.toFixed(2)}`
@@ -429,21 +442,13 @@ async function checkSignals() {
           console.log(`[${new Date().toISOString()}] ⏭ ${symbol}: NO SIGNAL`);
 
           if (regime === 'high_volatility') {
-            signalReason = `High volatility (ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(2)})`;
-
-            console.log(
-              `   Reason: HIGH_VOLATILITY regime ` +
-                `(ATR%: ${indicators?.regimeIndicators?.atrPct?.toFixed(4)}, ` +
-                `BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`
-            );
+            signalReason =
+              `High volatility (ATR%: ` +
+              `${indicators?.regimeIndicators?.atrPct?.toFixed(4)})`;
           } else if (regime === 'range') {
-            signalReason = `Range (ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)})`;
-
-            console.log(
-              `   Reason: RANGE regime ` +
-                `(ADX: ${indicators?.regimeIndicators?.adx?.toFixed(2)}, ` +
-                `BB Width: ${indicators?.regimeIndicators?.bbWidth?.toFixed(4)})`
-            );
+            signalReason =
+              `Range (ADX: ` +
+              `${indicators?.regimeIndicators?.adx?.toFixed(2)})`;
           } else if (regime === 'trend_up') {
             const reasons: string[] = [];
 
@@ -462,7 +467,6 @@ async function checkSignals() {
             }
 
             signalReason = reasons.join(', ') || 'Trend up - trades disabled';
-            console.log(`   Reason: ${signalReason}`);
           } else if (regime === 'trend_down') {
             const reasons: string[] = [];
 
@@ -481,28 +485,13 @@ async function checkSignals() {
             }
 
             signalReason = reasons.join(', ') || 'No MACD cross down';
-            console.log(`   Reason: ${signalReason}`);
           } else if (regime === 'breakout_watch') {
             signalReason = 'Waiting for BB breakout';
-
-            console.log(`   Reason: BREAKOUT_WATCH - waiting for BB breakout`);
-            console.log(
-              `   BB Upper: ${indicators?.bbUpper?.toFixed(4)}, ` +
-                `BB Lower: ${indicators?.bbLower?.toFixed(4)}`
-            );
-            console.log(
-              `   Price vs BB: ${
-                price > (indicators?.bbUpper ?? 0)
-                  ? 'ABOVE'
-                  : price < (indicators?.bbLower ?? 0)
-                    ? 'BELOW'
-                    : 'INSIDE'
-              }`
-            );
           } else {
             signalReason = 'Unknown regime';
-            console.log(`   Reason: UNKNOWN regime or indicators not ready`);
           }
+
+          console.log(`   Reason: ${signalReason}`);
 
           signalResults.push({
             symbol,
@@ -604,27 +593,13 @@ async function checkPositions() {
     console.log(
       `\n[${new Date().toISOString()}] ========== POSITION CHECK START ==========`
     );
-
     console.log(
       `[${new Date().toISOString()}] Checking ${positions.length} position(s)...`
     );
 
-    console.log(
-      `[${new Date().toISOString()}] Equity: $${getBalance().toFixed(2)}, ` +
-        `Reserved: $${getReservedCapital().toFixed(2)}, ` +
-        `Available: $${getAvailableBalance().toFixed(2)}`
-    );
-
-    // trailing params
-    const TRAILING_THRESHOLD_PERCENT = 0.8;
-    const TRAILING_DISTANCE_PERCENT = 0.35;
-
     for (const position of positions) {
       try {
         if (!hasOpenPosition(position.symbol)) {
-          console.log(
-            `[${new Date().toISOString()}] ⏭ ${position.symbol}: POSITION CHECK SKIPPED — no longer open`
-          );
           continue;
         }
 
@@ -636,7 +611,246 @@ async function checkPositions() {
             : (position.entryPrice - currentPrice) * position.quantity;
 
         const unrealizedPnLPercent =
-          (unrealizedPnL / position.notional) * 100;
+          position.notional > 0
+            ? (unrealizedPnL / position.notional) * 100
+            : 0;
+
+        const previousMaxPnL =
+          position.metadata?.maxUnrealizedPnL ?? Number.NEGATIVE_INFINITY;
+
+        const previousMaxPnLPercent =
+          position.metadata?.maxUnrealizedPnLPercent ??
+          Number.NEGATIVE_INFINITY;
+
+        const previousWorstPnL =
+          position.metadata?.worstUnrealizedPnL ?? Number.POSITIVE_INFINITY;
+
+        const previousWorstPnLPercent =
+          position.metadata?.worstUnrealizedPnLPercent ??
+          Number.POSITIVE_INFINITY;
+
+        const maxUnrealizedPnL = Math.max(previousMaxPnL, unrealizedPnL);
+        const maxUnrealizedPnLPercent = Math.max(
+          previousMaxPnLPercent,
+          unrealizedPnLPercent
+        );
+
+        updatePositionMetadata(position.id, {
+          maxUnrealizedPnL,
+          maxUnrealizedPnLPercent,
+          worstUnrealizedPnL: Math.min(previousWorstPnL, unrealizedPnL),
+          worstUnrealizedPnLPercent: Math.min(
+            previousWorstPnLPercent,
+            unrealizedPnLPercent
+          )
+        });
+
+        const openedAt = new Date(position.openedAt).getTime();
+        const positionAgeSeconds = Math.floor(
+          (Date.now() - openedAt) / 1000
+        );
+
+        const partialClosed = position.metadata?.partialClosed ?? false;
+        const trailingActive = position.metadata?.trailingActive ?? false;
+
+        // 1) Непрерывный BE / ratchet для полной позиции.
+        if (
+          !partialClosed &&
+          maxUnrealizedPnLPercent >= BE_THRESHOLD_PERCENT
+        ) {
+          const lockedPercent =
+            ROUND_TRIP_FEE_PERCENT +
+            (maxUnrealizedPnLPercent - BE_THRESHOLD_PERCENT) * LOCK_RATIO;
+
+          const ratchetStop =
+            position.side === 'long'
+              ? position.entryPrice * (1 + lockedPercent / 100)
+              : position.entryPrice * (1 - lockedPercent / 100);
+
+          const nextStop =
+            position.side === 'long'
+              ? Math.max(position.stopLossPrice, ratchetStop)
+              : Math.min(position.stopLossPrice, ratchetStop);
+
+          if (nextStop !== position.stopLossPrice) {
+            const updated = updatePositionStopLoss(position.id, nextStop);
+
+            if (!updated) {
+              throw new Error(
+                `Failed to update ratchet stop for ${position.id}`
+              );
+            }
+
+            position.stopLossPrice = nextStop;
+
+            updatePositionMetadata(position.id, {
+              beTriggered: true,
+              trailingStopPrice: nextStop
+            });
+
+            console.log(
+              `[${new Date().toISOString()}] 🛡 ${position.symbol}: RATCHET SL @ ` +
+                `${formatPrice(nextStop)} | MFE ${maxUnrealizedPnLPercent.toFixed(2)}% | ` +
+                `lock ${lockedPercent.toFixed(2)}%`
+            );
+          }
+        }
+
+        // 2) При достижении +0.8% фиксируем половину позиции и включаем трейлинг.
+        if (
+          !partialClosed &&
+          maxUnrealizedPnLPercent >= PARTIAL_THRESHOLD_PERCENT
+        ) {
+          const quantityBeforePartial = position.quantity;
+          const closeQuantity = quantityBeforePartial * 0.5;
+
+          const partialResult = partialClosePosition(
+            position.id,
+            closeQuantity,
+            currentPrice
+          );
+
+          if (!partialResult.ok) {
+            throw new Error(
+              `Partial close failed for ${position.symbol}: ${partialResult.message}`
+            );
+          }
+
+          const remainingPosition = getPositions().find(
+            item => item.id === position.id
+          );
+
+          if (!remainingPosition) {
+            throw new Error(
+              `Position ${position.id} not found after partial close`
+            );
+          }
+
+          const trailDistance =
+            currentPrice * (TRAILING_DISTANCE_PERCENT / 100);
+
+          const proposedInitialTrail =
+            remainingPosition.side === 'long'
+              ? currentPrice - trailDistance
+              : currentPrice + trailDistance;
+
+          const initialTrailingStop =
+            remainingPosition.side === 'long'
+              ? Math.max(
+                  remainingPosition.stopLossPrice,
+                  proposedInitialTrail
+                )
+              : Math.min(
+                  remainingPosition.stopLossPrice,
+                  proposedInitialTrail
+                );
+
+          const updated = updatePositionStopLoss(
+            remainingPosition.id,
+            initialTrailingStop
+          );
+
+          if (!updated) {
+            throw new Error(
+              `Failed to initialize trailing stop for ${position.id}`
+            );
+          }
+
+          position.quantity = remainingPosition.quantity;
+          position.notional = remainingPosition.notional;
+          position.reservedCapital = remainingPosition.reservedCapital;
+          position.stopLossPrice = initialTrailingStop;
+
+          updatePositionMetadata(position.id, {
+            partialClosed: true,
+            trailingActive: true,
+            trailingStopPrice: initialTrailingStop
+          });
+
+          console.log(
+            `[${new Date().toISOString()}] 📉 ${position.symbol}: PARTIAL CLOSE 50% ` +
+              `(${closeQuantity.toFixed(8)}) @ ${formatPrice(currentPrice)}`
+          );
+          console.log(
+            `[${new Date().toISOString()}] 🪢 ${position.symbol}: TRAILING ON @ ` +
+              `${formatPrice(initialTrailingStop)}`
+          );
+        }
+
+        // 3) Трейлинг для остатка после partial close.
+        if (trailingActive || partialClosed) {
+          const statePosition = getPositions().find(
+            item => item.id === position.id
+          );
+
+          if (!statePosition) {
+            continue;
+          }
+
+          const priorTrailingStop =
+            statePosition.metadata?.trailingStopPrice ??
+            statePosition.stopLossPrice;
+
+          const trailDistance =
+            currentPrice * (TRAILING_DISTANCE_PERCENT / 100);
+
+          const candidateTrailingStop =
+            statePosition.side === 'long'
+              ? currentPrice - trailDistance
+              : currentPrice + trailDistance;
+
+          const nextTrailingStop =
+            statePosition.side === 'long'
+              ? Math.max(
+                  statePosition.stopLossPrice,
+                  priorTrailingStop,
+                  candidateTrailingStop
+                )
+              : Math.min(
+                  statePosition.stopLossPrice,
+                  priorTrailingStop,
+                  candidateTrailingStop
+                );
+
+          if (nextTrailingStop !== statePosition.stopLossPrice) {
+            const updated = updatePositionStopLoss(
+              statePosition.id,
+              nextTrailingStop
+            );
+
+            if (!updated) {
+              throw new Error(
+                `Failed to update trailing stop for ${statePosition.id}`
+              );
+            }
+
+            position.stopLossPrice = nextTrailingStop;
+
+            updatePositionMetadata(position.id, {
+              trailingActive: true,
+              trailingStopPrice: nextTrailingStop
+            });
+
+            console.log(
+              `[${new Date().toISOString()}] 🔁 ${position.symbol}: TRAILING SL @ ` +
+                `${formatPrice(nextTrailingStop)}`
+            );
+          }
+        }
+
+        // После BE, ratchet, partial и trailing используем актуальную позицию из state.
+        const activePosition = getPositions().find(
+          item => item.id === position.id
+        );
+
+        if (!activePosition) {
+          continue;
+        }
+
+        position.stopLossPrice = activePosition.stopLossPrice;
+        position.quantity = activePosition.quantity;
+        position.notional = activePosition.notional;
+        position.reservedCapital = activePosition.reservedCapital;
 
         const distanceToTP =
           position.side === 'long'
@@ -664,292 +878,58 @@ async function checkPositions() {
             ? currentPrice <= position.stopLossPrice
             : currentPrice >= position.stopLossPrice;
 
-        const openedAt = new Date(position.openedAt).getTime();
-        const now = new Date().getTime();
-        const positionAgeSeconds = Math.floor((now - openedAt) / 1000);
-
-        const previousMaxPnL =
-          position.metadata?.maxUnrealizedPnL ?? Number.NEGATIVE_INFINITY;
-
-        const previousWorstPnL =
-          position.metadata?.worstUnrealizedPnL ?? Number.POSITIVE_INFINITY;
-
-        updatePositionMetadata(position.id, {
-          maxUnrealizedPnL: Math.max(previousMaxPnL, unrealizedPnL),
-          maxUnrealizedPnLPercent: Math.max(
-            position.metadata?.maxUnrealizedPnLPercent ??
-              Number.NEGATIVE_INFINITY,
-            unrealizedPnLPercent
-          ),
-          worstUnrealizedPnL: Math.min(previousWorstPnL, unrealizedPnL),
-          worstUnrealizedPnLPercent: Math.min(
-            position.metadata?.worstUnrealizedPnLPercent ??
-              Number.POSITIVE_INFINITY,
-            unrealizedPnLPercent
-          )
-        });
-
         console.log(
           `\n[${new Date().toISOString()}] 📊 ${position.symbol} (${position.side.toUpperCase()}):`
         );
         console.log(
-          `   Entry: ${position.entryPrice.toFixed(4)}, Current: ${currentPrice.toFixed(4)}`
+          `   Entry: ${formatPrice(position.entryPrice)}, Current: ${formatPrice(currentPrice)}`
         );
         console.log(
-          `   TP: ${position.takeProfitPrice.toFixed(4)} (${distanceToTPPercent.toFixed(2)}% away)`
+          `   TP: ${formatPrice(position.takeProfitPrice)}, SL: ${formatPrice(position.stopLossPrice)}`
         );
         console.log(
-          `   SL: ${position.stopLossPrice.toFixed(4)} (${distanceToSLPercent.toFixed(2)}% away)`
-        );
-        console.log(
-          `   Unrealized PnL: $${unrealizedPnL.toFixed(2)} (${unrealizedPnLPercent.toFixed(2)}%)`
-        );
-        console.log(
-          `   Reserved: $${position.reservedCapital.toFixed(2)}`
-        );
-        console.log(
-          `   Age: ${Math.floor(positionAgeSeconds / 60)}m ${positionAgeSeconds % 60}s`
+          `   Unrealized: $${unrealizedPnL.toFixed(2)} (${unrealizedPnLPercent.toFixed(2)}%) | ` +
+            `MFE: ${maxUnrealizedPnLPercent.toFixed(2)}%`
         );
 
-        const beTriggered = position.metadata?.beTriggered ?? false;
-        const partialClosed = position.metadata?.partialClosed ?? false;
-        const trailingActive = position.metadata?.trailingActive ?? false;
-
-        // 1) BE+fees at +0.4%
-        if (!beTriggered && unrealizedPnLPercent >= 0.4) {
-          const feesPerUnit = (position.entryPrice + currentPrice) * TRADE_FEE_RATE;
-          const bePrice =
-            position.side === 'long'
-              ? position.entryPrice + feesPerUnit
-              : position.entryPrice - feesPerUnit;
-
-          const newStop =
-            position.side === 'long'
-              ? Math.max(position.stopLossPrice, bePrice)
-              : Math.min(position.stopLossPrice, bePrice);
-
-          if (newStop !== position.stopLossPrice) {
-            updatePositionStopLoss(position.id, newStop);
-            position.stopLossPrice = newStop;
-            updatePositionMetadata(position.id, { beTriggered: true });
-            
-            console.log(
-              `[${new Date().toISOString()}] 🛡 ${position.symbol}: MOVED SL TO BE+FEES @ ${formatPrice(newStop)}`
-            );
-          }
-        }
-
-        // 2) Partial close 50% + activate trailing after +0.8%
-        if (!partialClosed && unrealizedPnLPercent >= TRAILING_THRESHOLD_PERCENT) {
-          const closeQty = position.quantity * 0.5;
-          const partialResult = partialClosePosition(position.id, closeQty, currentPrice);
-
-          if (partialResult.ok) {
-            updatePositionMetadata(position.id, { partialClosed: true });
-
-            const trailDistance = currentPrice * (TRAILING_DISTANCE_PERCENT / 100);
-            const initialTrailingStop =
-              position.side === 'long'
-                ? currentPrice - trailDistance
-                : currentPrice + trailDistance;
-
-            updatePositionMetadata(position.id, {
-              trailingActive: true,
-              trailingStopPrice: initialTrailingStop
-            });
-
-            console.log(
-              `[${new Date().toISOString()}] 📉 ${position.symbol}: PARTIAL CLOSED ${closeQty.toFixed(4)} @ ${formatPrice(currentPrice)}`
-            );
-            console.log(
-              `[${new Date().toISOString()}] 🪢 ${position.symbol}: TRAILING ACTIVATED, initial stop @ ${formatPrice(initialTrailingStop)}`
-            );
-          }
-        }
-
-        // 3) Update trailing stop for remaining half
-        if (trailingActive || (partialClosed && trailingActive)) {
-          const prevTrailingStop = position.metadata?.trailingStopPrice ?? 0;
-
-          const trailDistance = currentPrice * (TRAILING_DISTANCE_PERCENT / 100);
-          const newTrailingStop =
-            position.side === 'long'
-              ? currentPrice - trailDistance
-              : currentPrice + trailDistance;
-
-          const improvedStop =
-            position.side === 'long'
-              ? Math.max(prevTrailingStop, newTrailingStop)
-              : Math.min(prevTrailingStop, newTrailingStop);
-
-          if (improvedStop !== prevTrailingStop) {
-            updatePositionMetadata(position.id, {
-              trailingStopPrice: improvedStop
-            });
-            updatePositionStopLoss(position.id, improvedStop);
-            position.stopLossPrice = improvedStop;
-            
-            console.log(
-              `[${new Date().toISOString()}] 🔁 ${position.symbol}: TRAILING STOP MOVED TO ${formatPrice(improvedStop)}`
-            );
-          }
-
-          const hitTrailingStop =
-            position.side === 'long'
-              ? currentPrice <= improvedStop
-              : currentPrice >= improvedStop;
-
-          if (hitTrailingStop && !hitTakeProfit && !hitStopLoss) {
-            console.log(
-              `[${new Date().toISOString()}] 🛑 ${position.symbol}: HIT TRAILING STOP!`
-            );
-
-            const result = closePosition(
-              position.id,
-              currentPrice,
-              'stop_loss'
-            );
-
-            if (result.ok && result.balance !== undefined) {
-              console.log(
-                `[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED BY TRAILING STOP`
-              );
-              console.log(`   Exit: ${currentPrice.toFixed(4)}`);
-              console.log(
-                `   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)}`
-              );
-              console.log(`   Equity: $${result.balance.toFixed(2)}`);
-              console.log(
-                `   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`
-              );
-              console.log(
-                `   Available: $${result.availableBalanceAfter.toFixed(2)}`
-              );
-            } else {
-              console.error(
-                `[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`
-              );
-
-              logError({
-                timestamp: new Date().toISOString(),
-                context: 'close_position',
-                symbol: position.symbol,
-                positionId: position.id,
-                error: String(result.message),
-                stack: undefined
-              });
-
-              notifyError({
-                context: 'close_position',
-                symbol: position.symbol,
-                error: String(result.message)
-              });
-            }
-
-            continue;
-          }
-        }
-
-        // 4) Standard TP / SL checks
         if (hitTakeProfit) {
-          console.log(
-            `[${new Date().toISOString()}] 🎯 ${position.symbol}: HIT TAKE PROFIT!`
-          );
-
           const result = closePosition(
             position.id,
             currentPrice,
             'take_profit'
           );
 
-          if (result.ok && result.balance !== undefined) {
-            console.log(
-              `[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT TP`
+          if (!result.ok) {
+            throw new Error(
+              `Failed to close TP for ${position.symbol}: ${result.message}`
             );
-            console.log(`   Exit: ${currentPrice.toFixed(4)}`);
-
-            const pnlPercent = result.lastClosedTrade
-              ? (result.lastClosedTrade.netPnL / position.notional) * 100
-              : 0;
-
-            console.log(
-              `   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)} (${pnlPercent.toFixed(2)}%)`
-            );
-            console.log(`   Equity: $${result.balance.toFixed(2)}`);
-            console.log(
-              `   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`
-            );
-            console.log(
-              `   Available: $${result.availableBalanceAfter.toFixed(2)}`
-            );
-          } else {
-            console.error(
-              `[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`
-            );
-
-            logError({
-              timestamp: new Date().toISOString(),
-              context: 'close_position',
-              symbol: position.symbol,
-              positionId: position.id,
-              error: String(result.message),
-              stack: undefined
-            });
-
-            notifyError({
-              context: 'close_position',
-              symbol: position.symbol,
-              error: String(result.message)
-            });
           }
-        } else if (hitStopLoss) {
-          console.log(
-            `[${new Date().toISOString()}] 🛑 ${position.symbol}: HIT STOP LOSS!`
-          );
 
+          console.log(
+            `[${new Date().toISOString()}] 🎯 ${position.symbol}: CLOSED AT TP | ` +
+              `Net $${result.lastClosedTrade?.netPnL.toFixed(2)}`
+          );
+        } else if (hitStopLoss) {
           const result = closePosition(
             position.id,
             currentPrice,
             'stop_loss'
           );
 
-          if (result.ok && result.balance !== undefined) {
-            console.log(
-              `[${new Date().toISOString()}] ✅ ${position.symbol}: CLOSED AT SL`
+          if (!result.ok) {
+            throw new Error(
+              `Failed to close SL for ${position.symbol}: ${result.message}`
             );
-            console.log(`   Exit: ${currentPrice.toFixed(4)}`);
-            console.log(
-              `   Net PnL: $${result.lastClosedTrade?.netPnL.toFixed(2)}`
-            );
-            console.log(`   Equity: $${result.balance.toFixed(2)}`);
-            console.log(
-              `   Reserved: $${result.reservedCapitalAfter.toFixed(2)}`
-            );
-            console.log(
-              `   Available: $${result.availableBalanceAfter.toFixed(2)}`
-            );
-          } else {
-            console.error(
-              `[${new Date().toISOString()}] ❌ ${position.symbol}: FAILED TO CLOSE - ${result.message}`
-            );
-
-            logError({
-              timestamp: new Date().toISOString(),
-              context: 'close_position',
-              symbol: position.symbol,
-              positionId: position.id,
-              error: String(result.message),
-              stack: undefined
-            });
-
-            notifyError({
-              context: 'close_position',
-              symbol: position.symbol,
-              error: String(result.message)
-            });
           }
+
+          console.log(
+            `[${new Date().toISOString()}] 🛑 ${position.symbol}: CLOSED AT STOP | ` +
+              `Net $${result.lastClosedTrade?.netPnL.toFixed(2)}`
+          );
         } else {
-          console.log(`[${new Date().toISOString()}] ⏳ ${position.symbol}: HOLDING`);
+          console.log(
+            `[${new Date().toISOString()}] ⏳ ${position.symbol}: HOLDING`
+          );
         }
 
         logPositionCheck({
@@ -996,7 +976,7 @@ async function checkPositions() {
         notifyError({
           context: 'position_check',
           symbol: position.symbol,
-          error: String(errorMsg)
+          error: errorMsg
         });
       }
     }
@@ -1025,6 +1005,12 @@ export function startScheduler() {
   );
   console.log(
     `[${new Date().toISOString()}] Max positions: ${MAX_PARALLEL_POSITIONS}`
+  );
+  console.log(
+    `[${new Date().toISOString()}] BE: +${BE_THRESHOLD_PERCENT}% | ` +
+      `Ratchet lock: ${LOCK_RATIO * 100}% | ` +
+      `Partial: +${PARTIAL_THRESHOLD_PERCENT}% | ` +
+      `Trailing: ${TRAILING_DISTANCE_PERCENT}%`
   );
 
   const positionPercent =
