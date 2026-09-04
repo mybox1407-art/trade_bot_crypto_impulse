@@ -1,4 +1,11 @@
-import { MACD, RSI, ATR, ADX, BollingerBands, EMA } from 'technicalindicators';
+import {
+  MACD,
+  RSI,
+  ATR,
+  ADX,
+  BollingerBands,
+  EMA
+} from 'technicalindicators';
 
 export const STARTING_BALANCE = 500;
 export const MAX_RISK_PER_TRADE = 0.01;
@@ -8,6 +15,7 @@ export const MAX_RISK_PER_TRADE = 0.01;
 export const TRADE_FEE_RATE = 0.0004;
 
 export const ENABLE_TREND_UP_TRADES = true;
+
 const MIN_ADX_TREND = 20;
 const MIN_ADX_RANGE = 18;
 const BB_SQUEEZE_THRESHOLD = 0.05;
@@ -16,8 +24,14 @@ const BB_SQUEEZE_THRESHOLD = 0.05;
 const BREAKOUT_ATR_BUFFER_K = 0.2;
 const BREAKOUT_BODY_ATR_MIN = 0.5;
 
-// skip entry if price moved too far from signal level
+// Skip entry if price moved too far from the original signal level.
 const ENTRY_SLIPPAGE_ATR_MAX = 0.5;
+
+// Entry quality filter.
+// Trend entries should be relatively near EMA20.
+// Breakout entries are allowed to be farther because the setup is momentum-based.
+const MAX_ENTRY_EXTENSION_TREND_ATR = 1.5;
+const MAX_ENTRY_EXTENSION_BREAKOUT_ATR = 3.0;
 
 export interface Candle {
   time: number;
@@ -28,7 +42,13 @@ export interface Candle {
   volume: number;
 }
 
-export type MarketRegime = 'trend_up' | 'trend_down' | 'range' | 'breakout_watch' | 'high_volatility' | 'unknown';
+export type MarketRegime =
+  | 'trend_up'
+  | 'trend_down'
+  | 'range'
+  | 'breakout_watch'
+  | 'high_volatility'
+  | 'unknown';
 
 type RegimeIndicators = {
   lastClose: number;
@@ -48,43 +68,89 @@ function last<T>(arr: T[]) {
 }
 
 function mean(values: number[]) {
-  return values.reduce((a, b) => a + b, 0) / values.length;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function getVolumeSpike(volumes: number[], avgVol20: number) {
-  const v = volumes[volumes.length - 1] ?? 0;
-  return v >= avgVol20 * 1.1;
+  const latestVolume = volumes[volumes.length - 1] ?? 0;
+  return latestVolume >= avgVol20 * 1.1;
 }
 
 export function detectMarketRegime(candles: Candle[]) {
-  const closes = candles.map(c => c.close);
-  const highs = candles.map(c => c.high);
-  const lows = candles.map(c => c.low);
-  const volumes = candles.map(c => c.volume);
+  const closes = candles.map(candle => candle.close);
+  const highs = candles.map(candle => candle.high);
+  const lows = candles.map(candle => candle.low);
+  const volumes = candles.map(candle => candle.volume);
 
-  const atr = ATR.calculate({ period: 14, high: highs, low: lows, close: closes });
-  const adx = ADX.calculate({ period: 14, high: highs, low: lows, close: closes });
-  const ema20 = EMA.calculate({ period: 20, values: closes });
-  const ema50 = EMA.calculate({ period: 50, values: closes });
-  const ema200 = EMA.calculate({ period: 200, values: closes });
-  const bb = BollingerBands.calculate({ period: 20, values: closes, stdDev: 2 });
+  const atr = ATR.calculate({
+    period: 14,
+    high: highs,
+    low: lows,
+    close: closes
+  });
 
-  if (atr.length < 2 || adx.length < 2 || ema20.length < 1 || ema50.length < 1 || ema200.length < 1 || bb.length < 1) {
-    return { regime: 'unknown' as MarketRegime, ready: false, indicators: null as RegimeIndicators | null };
+  const adx = ADX.calculate({
+    period: 14,
+    high: highs,
+    low: lows,
+    close: closes
+  });
+
+  const ema20 = EMA.calculate({
+    period: 20,
+    values: closes
+  });
+
+  const ema50 = EMA.calculate({
+    period: 50,
+    values: closes
+  });
+
+  const ema200 = EMA.calculate({
+    period: 200,
+    values: closes
+  });
+
+  const bb = BollingerBands.calculate({
+    period: 20,
+    values: closes,
+    stdDev: 2
+  });
+
+  if (
+    atr.length < 2 ||
+    adx.length < 2 ||
+    ema20.length < 1 ||
+    ema50.length < 1 ||
+    ema200.length < 1 ||
+    bb.length < 1
+  ) {
+    return {
+      regime: 'unknown' as MarketRegime,
+      ready: false,
+      indicators: null as RegimeIndicators | null
+    };
   }
 
   const lastClose = last(closes);
   const lastAtr = last(atr);
   const lastAdx = last(adx);
-  const prevAdx = adx[adx.length - 2];
+  const previousAdx = adx[adx.length - 2];
+
   const lastEma20 = last(ema20);
   const lastEma50 = last(ema50);
   const lastEma200 = last(ema200);
+
   const lastBb = last(bb);
   const avgVol20 = mean(volumes.slice(-20));
-  const bbWidth = (lastBb.upper - lastBb.lower) / lastBb.middle;
-  const adxRising = lastAdx.adx > prevAdx.adx;
-  const atrPct = lastAtr / lastClose;
+
+  const bbWidth =
+    lastBb.middle !== 0
+      ? (lastBb.upper - lastBb.lower) / lastBb.middle
+      : 0;
+
+  const adxRising = lastAdx.adx > previousAdx.adx;
+  const atrPct = lastClose > 0 ? lastAtr / lastClose : 0;
   const compression = bbWidth <= BB_SQUEEZE_THRESHOLD;
 
   const strongTrendUp =
@@ -101,16 +167,33 @@ export function detectMarketRegime(candles: Candle[]) {
     lastAdx.adx >= MIN_ADX_TREND &&
     adxRising;
 
-  const range = lastAdx.adx < MIN_ADX_RANGE && bbWidth < 0.08;
-  const breakoutWatch = compression && lastAdx.adx >= 15 && lastAdx.adx <= 28 && getVolumeSpike(volumes, avgVol20);
-  const highVolatility = atrPct > 0.025 || bbWidth > 0.12;
+  const range =
+    lastAdx.adx < MIN_ADX_RANGE &&
+    bbWidth < 0.08;
+
+  const breakoutWatch =
+    compression &&
+    lastAdx.adx >= 15 &&
+    lastAdx.adx <= 28 &&
+    getVolumeSpike(volumes, avgVol20);
+
+  const highVolatility =
+    atrPct > 0.025 ||
+    bbWidth > 0.12;
 
   let regime: MarketRegime = 'unknown';
-  if (highVolatility) regime = 'high_volatility';
-  else if (strongTrendUp) regime = 'trend_up';
-  else if (strongTrendDown) regime = 'trend_down';
-  else if (breakoutWatch) regime = 'breakout_watch';
-  else if (range) regime = 'range';
+
+  if (highVolatility) {
+    regime = 'high_volatility';
+  } else if (strongTrendUp) {
+    regime = 'trend_up';
+  } else if (strongTrendDown) {
+    regime = 'trend_down';
+  } else if (breakoutWatch) {
+    regime = 'breakout_watch';
+  } else if (range) {
+    regime = 'range';
+  }
 
   return {
     regime,
@@ -131,17 +214,47 @@ export function detectMarketRegime(candles: Candle[]) {
 }
 
 export function analyzeMarket(candles: Candle[], signalPrice?: number) {
-  const closes = candles.map(c => c.close);
-  const highs = candles.map(c => c.high);
-  const lows = candles.map(c => c.low);
+  const closes = candles.map(candle => candle.close);
+  const highs = candles.map(candle => candle.high);
+  const lows = candles.map(candle => candle.low);
 
   const regimeInfo = detectMarketRegime(candles);
-  const macd = MACD.calculate({ values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, SimpleMAOscillator: false, SimpleMASignal: false });
-  const rsi = RSI.calculate({ period: 14, values: closes });
-  const atr = ATR.calculate({ period: 14, high: highs, low: lows, close: closes });
-  const bb = BollingerBands.calculate({ period: 20, values: closes, stdDev: 2 });
 
-  if (!regimeInfo.ready || !regimeInfo.indicators || macd.length < 2 || rsi.length < 1 || atr.length < 1 || bb.length < 1) {
+  const macd = MACD.calculate({
+    values: closes,
+    fastPeriod: 12,
+    slowPeriod: 26,
+    signalPeriod: 9,
+    SimpleMAOscillator: false,
+    SimpleMASignal: false
+  });
+
+  const rsi = RSI.calculate({
+    period: 14,
+    values: closes
+  });
+
+  const atr = ATR.calculate({
+    period: 14,
+    high: highs,
+    low: lows,
+    close: closes
+  });
+
+  const bb = BollingerBands.calculate({
+    period: 20,
+    values: closes,
+    stdDev: 2
+  });
+
+  if (
+    !regimeInfo.ready ||
+    !regimeInfo.indicators ||
+    macd.length < 2 ||
+    rsi.length < 1 ||
+    atr.length < 1 ||
+    bb.length < 1
+  ) {
     return {
       price: closes[closes.length - 1],
       buy: false,
@@ -150,44 +263,75 @@ export function analyzeMarket(candles: Candle[], signalPrice?: number) {
       takeProfitPrice: null,
       stopLossPrice: null,
       positionSize: null,
-      regime: 'unknown',
-      indicators: { ready: false },
+      regime: 'unknown' as MarketRegime,
+      indicators: {
+        ready: false,
+        entryExtensionAtr: null,
+        maxEntryExtensionAtr: null,
+        entryTooExtended: false
+      },
       skipReason: 'Indicators not ready'
     };
   }
 
   const price = last(closes);
   const lastMacd = last(macd);
-  const prevMacd = macd[macd.length - 2];
+  const previousMacd = macd[macd.length - 2];
+
   const lastRsi = last(rsi);
   const lastAtr = last(atr);
   const lastBb = last(bb);
-  const regimeIndicators = regimeInfo.indicators;
   const lastCandle = last(candles);
 
-  const macdCrossUp = prevMacd.MACD! < prevMacd.signal! && lastMacd.MACD! > lastMacd.signal!;
-  const macdCrossDown = prevMacd.MACD! > prevMacd.signal! && lastMacd.MACD! < lastMacd.signal!;
+  const regime = regimeInfo.regime;
+  const regimeIndicators = regimeInfo.indicators;
+
+  const macdCrossUp =
+    previousMacd.MACD! < previousMacd.signal! &&
+    lastMacd.MACD! > lastMacd.signal!;
+
+  const macdCrossDown =
+    previousMacd.MACD! > previousMacd.signal! &&
+    lastMacd.MACD! < lastMacd.signal!;
+
   const rsiBull = lastRsi > 40 && lastRsi < 65;
   const rsiBear = lastRsi < 60 && lastRsi > 35;
 
   const riskCapital = STARTING_BALANCE * MAX_RISK_PER_TRADE;
-  const regime = regimeInfo.regime;
+
   let side: 'long' | 'short' | 'none' = 'none';
   let buy = false;
   let sell = false;
+
   let takeProfitPrice: number | null = null;
   let stopLossPrice: number | null = null;
   let positionSize: number | null = null;
+
   let skipReason: string | null = null;
 
-  if (ENABLE_TREND_UP_TRADES && regime === 'trend_up' && macdCrossUp && rsiBull && price > regimeIndicators.ema200) {
+  let entryExtensionAtr: number | null = null;
+  let maxEntryExtensionAtr: number | null = null;
+  let entryTooExtended = false;
+
+  if (
+    ENABLE_TREND_UP_TRADES &&
+    regime === 'trend_up' &&
+    macdCrossUp &&
+    rsiBull &&
+    price > regimeIndicators.ema200
+  ) {
     side = 'long';
     buy = true;
     stopLossPrice = price - lastAtr * 1.4;
     takeProfitPrice = price + lastAtr * 2.8;
   }
 
-  if (regime === 'trend_down' && macdCrossDown && rsiBear && price < regimeIndicators.ema200) {
+  if (
+    regime === 'trend_down' &&
+    macdCrossDown &&
+    rsiBear &&
+    price < regimeIndicators.ema200
+  ) {
     side = 'short';
     sell = true;
     stopLossPrice = price + lastAtr * 1.4;
@@ -212,11 +356,13 @@ export function analyzeMarket(candles: Candle[], signalPrice?: number) {
     if (breakoutUp) {
       side = 'long';
       buy = true;
+      sell = false;
       stopLossPrice = price - lastAtr * 1.3;
       takeProfitPrice = price + lastAtr * 3.0;
     } else if (breakoutDown) {
       side = 'short';
       sell = true;
+      buy = false;
       stopLossPrice = price + lastAtr * 1.3;
       takeProfitPrice = price - lastAtr * 3.0;
     }
@@ -226,22 +372,74 @@ export function analyzeMarket(candles: Candle[], signalPrice?: number) {
     buy = false;
     sell = false;
     side = 'none';
+    takeProfitPrice = null;
+    stopLossPrice = null;
+    positionSize = null;
   }
 
-  // skip if price moved too far from signal level
+  // Existing protection: skip a signal if price has moved away
+  // too far from the original signal level before execution.
   if ((buy || sell) && signalPrice != null && lastAtr > 0) {
-    const distance = Math.abs(price - signalPrice);
-    if (distance > lastAtr * ENTRY_SLIPPAGE_ATR_MAX) {
+    const distanceFromSignal = Math.abs(price - signalPrice);
+    const signalDistanceAtr = distanceFromSignal / lastAtr;
+
+    if (signalDistanceAtr > ENTRY_SLIPPAGE_ATR_MAX) {
       buy = false;
       sell = false;
       side = 'none';
-      skipReason = `Price moved ${(distance / lastAtr).toFixed(2)} ATR from signal`;
+      takeProfitPrice = null;
+      stopLossPrice = null;
+      positionSize = null;
+
+      skipReason =
+        `Price moved ${signalDistanceAtr.toFixed(2)} ATR ` +
+        `from signal (max ${ENTRY_SLIPPAGE_ATR_MAX.toFixed(2)} ATR)`;
+    }
+  }
+
+  // New entry-quality filter: do not chase a trend too far from EMA20.
+  // Long: price must not be too far above EMA20.
+  // Short: price must not be too far below EMA20.
+  if (side !== 'none' && lastAtr > 0) {
+    const extensionFromEma20 =
+      side === 'long'
+        ? price - regimeIndicators.ema20
+        : regimeIndicators.ema20 - price;
+
+    entryExtensionAtr = extensionFromEma20 / lastAtr;
+
+    maxEntryExtensionAtr =
+      regime === 'breakout_watch'
+        ? MAX_ENTRY_EXTENSION_BREAKOUT_ATR
+        : MAX_ENTRY_EXTENSION_TREND_ATR;
+
+    entryTooExtended =
+      entryExtensionAtr > maxEntryExtensionAtr;
+
+    if (entryTooExtended) {
+      const direction = side === 'long' ? 'above' : 'below';
+
+      buy = false;
+      sell = false;
+      side = 'none';
+      takeProfitPrice = null;
+      stopLossPrice = null;
+      positionSize = null;
+
+      skipReason =
+        `Entry too extended: ${entryExtensionAtr.toFixed(2)} ATR ` +
+        `${direction} EMA20 (max ${maxEntryExtensionAtr.toFixed(2)} ATR, ` +
+        `regime ${regime})`;
     }
   }
 
   if (side !== 'none' && stopLossPrice != null) {
     const riskPerUnit = Math.abs(price - stopLossPrice);
-    positionSize = riskPerUnit > 0 ? riskCapital / riskPerUnit : null;
+
+    positionSize =
+      riskPerUnit > 0
+        ? riskCapital / riskPerUnit
+        : null;
   }
 
   return {
@@ -268,6 +466,12 @@ export function analyzeMarket(candles: Candle[], signalPrice?: number) {
       regimeIndicators,
       breakoutAtrBufferK: BREAKOUT_ATR_BUFFER_K,
       breakoutBodyAtrMin: BREAKOUT_BODY_ATR_MIN,
+      entrySlippageAtrMax: ENTRY_SLIPPAGE_ATR_MAX,
+      maxEntryExtensionTrendAtr: MAX_ENTRY_EXTENSION_TREND_ATR,
+      maxEntryExtensionBreakoutAtr: MAX_ENTRY_EXTENSION_BREAKOUT_ATR,
+      entryExtensionAtr,
+      maxEntryExtensionAtr,
+      entryTooExtended,
       trendUpTradesEnabled: ENABLE_TREND_UP_TRADES,
       tradeFeeRate: TRADE_FEE_RATE,
       ready: true
