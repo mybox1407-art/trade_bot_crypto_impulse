@@ -4,8 +4,6 @@ cd ~
 rm -rf trade_bot_crypto_impulse
 git clone https://github.com/mybox1407/trade_bot_crypto_impulse.git
 cd trade_bot_crypto_impulse
-npm install protobufjs
-npm install -D @types/protobufjs
 docker compose up -d --build
 npm install
 
@@ -18,7 +16,8 @@ docker compose logs -f trade_bot
 
 
 
-
+npm install protobufjs
+npm install -D @types/protobufjs
 
 
 
