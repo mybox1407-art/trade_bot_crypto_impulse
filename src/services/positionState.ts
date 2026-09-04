@@ -574,7 +574,7 @@ export function closePosition(
     beTriggered: position.metadata?.beTriggered ?? false,
     partialClosed: position.metadata?.partialClosed ?? false,
     trailingActive: position.metadata?.trailingActive ?? false,
-    trailingStopPrice: position.metadata?.trailingStopPrice ?? null
+    trailingStopPrice: position.metadata?.trailingStopPrice
   });
 
   notifyPositionClose({
