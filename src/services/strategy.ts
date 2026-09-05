@@ -25,7 +25,7 @@ const BREAKOUT_ATR_BUFFER_K = 0.2;
 const BREAKOUT_BODY_ATR_MIN = 0.5;
 
 // Skip entry if price moved too far from the original signal level.
-const ENTRY_SLIPPAGE_ATR_MAX = 0.5;
+const ENTRY_SLIPPAGE_ATR_MAX = 1;
 
 // Entry quality filter.
 // Trend entries should be relatively near EMA20.
